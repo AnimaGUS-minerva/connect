@@ -1,0 +1,6 @@
+[package]
+name = "connect"
+version = "1.0.0"
+authors = ["Michael Richardson <mcr@sandelman.ca>"]
+# build = "build.rs"
+
