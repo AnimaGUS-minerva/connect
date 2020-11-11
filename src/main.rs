@@ -15,30 +15,74 @@
  *
  */
 
-use rtnetlink::new_connection;
+use futures::stream::TryStreamExt;
+use rtnetlink::{new_connection, Error, Handle};
+
+pub mod dull;
+//use std::env;
 
 static VERSION: &str = "1.0.0";
 // static mut ARGC: isize = 0 as isize;
 // static mut ARGV: *mut *mut i8 = 0 as *mut *mut i8;
 
-async fn setup_dull_bridge() -> Result<(), String> {
-    let (connection, handle, _) = new_connection().unwrap();
-    tokio::spawn(connection);
+/*
+async fn set_link_down(handle: Handle, name: String) -> Result<(), Error> {
+    let mut links = handle.link().get().set_name_filter(name.clone()).execute();
+    if let Some(link) = links.try_next().await? {
+        handle
+            .link()
+            .set(link.header.index)
+            .down()
+            .execute()
+            .await?
+    } else {
+        println!("no link link {} found", name);
+    }
+    Ok(())
+}
+*/
 
-    handle
+async fn setup_dull_bridge(handle: Handle, name: String) -> Result<(), Error> {
+    let _result = handle
         .link()
         .add()
         .veth("dull0".into(), "pdull0".into())
         .execute()
         .await
-        .map_err(|e| format!("{}", e))
+        .map_err(|e| format!("{}", e));
+
+    let mut dull0 = handle.link().get().set_name_filter(name.clone()).execute();
+    if let Some(link) = dull0.try_next().await? {
+        handle
+            .link()
+            .set(link.header.index)
+            .up()
+            .execute()
+            .await?;
+        handle
+            .link()
+            .set(link.header.index)
+            .setns_by_pid(1u32)
+            .execute()
+            .await?;
+    } else {
+        println!("no link link {} found", "dull0");
+        return Ok(());
+    }
+
+    return Ok(());
 }
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
     println!("Hermes Connect {}", VERSION);
 
-    setup_dull_bridge().await.unwrap();
+    let (connection, handle, _) = new_connection().unwrap();
+    tokio::spawn(connection);
+
+    dull::dull_namespace_daemon().unwrap();
+
+    setup_dull_bridge(handle, "dull0".to_string()).await.unwrap();
 
     return Ok(());
 }
