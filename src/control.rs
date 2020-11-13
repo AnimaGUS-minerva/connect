@@ -16,11 +16,15 @@
  */
 
 extern crate serde;
-use serde::{Serialize, Deserialize};
-use std::io::Error;
-
 extern crate serde_cbor;
+
+use futures::prelude::*;
+use serde::{Serialize, Deserialize};
 use serde_cbor::{to_vec,from_slice};
+use std::io::{Error, ErrorKind};
+use tokio_serde::formats::*;
+use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
+
 use crate::dull::Dull;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -67,4 +71,40 @@ fn test_encode_decode_admindown() {
     let d: DullControl = decode_msg(&e);
 
     assert_eq!(d, data);
+}
+
+async fn read_write_admin_via_socket(data: &DullControl) -> Result<DullControl, std::io::Error> {
+    let pair = tokio::net::UnixStream::pair().unwrap();
+
+    let my_write_stream = FramedWrite::new(pair.0, LengthDelimitedCodec::new());
+    let mut serialized =
+        tokio_serde::SymmetricallyFramed::new(my_write_stream, SymmetricalCbor::default());
+
+    // write it. Assumes it does not block.
+    serialized.send(&data).await.unwrap();
+
+    // read it.
+    //let d: DullControl = serde_cbor::from_reader(pair.1)?;
+    let my_read_stream = FramedRead::new(pair.1, LengthDelimitedCodec::new());
+    let mut deserialized =
+        tokio_serde::SymmetricallyFramed::new(my_read_stream, SymmetricalCbor::default());
+
+    if let Some(msg) = deserialized.try_next().await.unwrap() {
+        return Ok(msg);
+    } else {
+        return Err(Error::new(ErrorKind::InvalidData, "failed to read"));
+    }
+}
+
+macro_rules! aw {
+    ($e:expr) => {
+        tokio_test::block_on($e)
+    };
+}
+
+#[test]
+fn test_write_read_admin_via_socket() {
+    let data = DullControl::AdminDown { interface_index: 5u32 };
+
+    assert_eq!(aw!(read_write_admin_via_socket(&data)).unwrap(), data);
 }
