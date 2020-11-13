@@ -19,6 +19,7 @@ use futures::stream::TryStreamExt;
 use rtnetlink::{new_connection, Error, Handle};
 
 pub mod dull;
+pub mod control;
 //use std::env;
 
 static VERSION: &str = "1.0.0";

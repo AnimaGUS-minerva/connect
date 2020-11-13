@@ -16,6 +16,7 @@
  */
 
 extern crate nix;
+extern crate tokio;
 
 use nix::sys::signal::*;
 use nix::unistd::*;
@@ -41,11 +42,16 @@ use nix::unistd::*;
  */
 
 pub struct Dull {
-    _parentfd: i32,
-    _iofd:     i32
+    parentfd: tokio::net::UnixStream,
+    childfd:  tokio::net::UnixStream
 }
 
 pub fn dull_namespace_daemon() -> Result<(), String> {
+
+    // set up a pair of sockets, connected
+    let pair = tokio::net::UnixStream::pair().unwrap();
+
+    let _d1 = Dull { parentfd: pair.0, childfd: pair.1 };
 
     match unsafe{fork()}.expect("fork failed") {
         ForkResult::Parent{ child } => {

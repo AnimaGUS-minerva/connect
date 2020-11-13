@@ -17,9 +17,11 @@
 
 extern crate serde;
 use serde::{Serialize, Deserialize};
+use std::io::Error;
 
 extern crate serde_cbor;
 use serde_cbor::{to_vec,from_slice};
+use crate::dull::Dull;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum DullControl {
@@ -37,9 +39,9 @@ pub fn decode_msg(msg: &Vec<u8>) -> DullControl {
     return from_slice(msg).unwrap();
 }
 
-
-pub fn send_dull() {
+pub fn send_dull(_dull: &Dull, _thing: &DullControl) -> Result<bool, Error> {
     println!("send dull");
+    return Ok(true);
 }
 
 #[test]
