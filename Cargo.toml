@@ -7,7 +7,8 @@ authors = ["Michael Richardson <mcr@sandelman.ca>"]
 
 [dependencies]
 futures = "0.3.1"
-cbor = "0.4.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_cbor = "0.11.1"
 nix  = "0.19.0"
 netlink-packet-route = { path = "/ssw/projects/pandora/connect/netlink/netlink-packet-route", version = "0.5" }
 rtnetlink     = { path = "/ssw/projects/pandora/connect/netlink/rtnetlink",     version = "0.5" }
