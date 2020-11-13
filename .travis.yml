@@ -1,6 +1,7 @@
 language: rust
 rust:
   - stable
+cache: cargo
 jobs:
   allow_failures:
     - rust: nightly
