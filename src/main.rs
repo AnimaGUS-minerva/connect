@@ -81,7 +81,7 @@ async fn main() -> Result<(), String> {
     let (connection, handle, _) = new_connection().unwrap();
     tokio::spawn(connection);
 
-    dull::dull_namespace_daemon().unwrap();
+    let _dull = dull::dull_namespace_daemon();
 
     setup_dull_bridge(handle, "dull0".to_string()).await.unwrap();
 

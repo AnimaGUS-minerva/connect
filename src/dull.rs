@@ -46,21 +46,32 @@ pub struct Dull {
     childfd:  tokio::net::UnixStream
 }
 
-pub fn dull_namespace_daemon() -> Result<(), String> {
+pub fn dull_process_control(_dull: Dull) {
+    loop { }
+}
+
+
+pub fn dull_namespace_daemon() -> Result<Dull, std::io::Error> {
 
     // set up a pair of sockets, connected
     let pair = tokio::net::UnixStream::pair().unwrap();
 
-    let _d1 = Dull { parentfd: pair.0, childfd: pair.1 };
+    let dull = Dull { parentfd: pair.0, childfd: pair.1 };
 
     match unsafe{fork()}.expect("fork failed") {
         ForkResult::Parent{ child } => {
+            dull.childfd.shutdown(std::net::Shutdown::Both).unwrap();
+
             sleep(5);
             kill(child, SIGKILL).expect("kill failed");
         }
         ForkResult::Child => {
-            loop {}  // until killed
+
+            // close the parentfd
+            dull.parentfd.shutdown(std::net::Shutdown::Both).unwrap();
+            dull_process_control(dull);
+            std::process::exit(0);
         }
     }
-    return Ok(());
+    return Ok(dull);
 }
