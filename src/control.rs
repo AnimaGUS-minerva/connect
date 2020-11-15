@@ -24,6 +24,7 @@ use serde_cbor::{to_vec,from_slice};
 use std::io::{Error, ErrorKind};
 use tokio_serde::formats::*;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
+use std::os::unix::net::UnixStream;
 
 use crate::dull::Dull;
 
@@ -107,11 +108,15 @@ fn test_encode_decode_admindown() {
     assert_eq!(d, data);
 }
 
+/* this function just helps the test case below, since tests can not do await */
 async fn read_write_admin_via_socket(data: &DullControl) -> Result<DullControl, std::io::Error> {
-    let pair = tokio::net::UnixStream::pair().unwrap();
+    let pair = UnixStream::pair().unwrap();
 
-    write_control(pair.0, data).await.unwrap();
-    return read_control(pair.1).await;
+    let reader = tokio::net::UnixStream::from_std(pair.1).unwrap();
+    let writer = tokio::net::UnixStream::from_std(pair.0).unwrap();
+
+    write_control(writer, data).await.unwrap();
+    return read_control(reader).await;
 }
 
 macro_rules! aw {

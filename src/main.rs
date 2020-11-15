@@ -74,17 +74,33 @@ async fn setup_dull_bridge(handle: Handle, name: String) -> Result<(), Error> {
     return Ok(());
 }
 
-#[tokio::main]
-async fn main() -> Result<(), String> {
-    println!("Hermes Connect {}", VERSION);
+async fn parent(dull: dull::Dull) -> Result<(), String> {
 
-    let (connection, handle, _) = new_connection().unwrap();
-    tokio::spawn(connection);
+    println!("setup in parent");
 
-    let _dull = dull::dull_namespace_daemon();
+    //let (connection, _handle, _) = new_connection().unwrap();
+    //tokio::spawn(connection);
 
-    setup_dull_bridge(handle, "dull0".to_string()).await.unwrap();
+    //setup_dull_bridge(handle, "dull0".to_string()).await.unwrap();
+
+    /* now shutdown the child */
+    control::write_control(dull.child_stream, &control::DullControl::Exit).await.unwrap();
 
     return Ok(());
 }
 
+
+fn main () -> Result<(), String> {
+
+    println!("Hermes Connect {}", VERSION);
+
+    /* before doing any async stuff, start the child */
+    let dull = dull::dull_namespace_daemon().unwrap();
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let future = parent(dull);
+    println!("blocking in main");
+    rt.block_on(future).unwrap();
+
+    return Ok(());
+}

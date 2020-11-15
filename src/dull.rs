@@ -18,8 +18,12 @@
 extern crate nix;
 extern crate tokio;
 
-use nix::sys::signal::*;
+use crate::control;
+use futures::prelude::*;
+//use nix::sys::signal::*;
 use nix::unistd::*;
+//use socket2::{Socket, Domain, Type};
+use std::os::unix::net::UnixStream;
 
 // use futures::stream::TryStreamExt;
 // use rtnetlink::{new_connection, Error, Handle};
@@ -41,37 +45,81 @@ use nix::unistd::*;
  * Prior to doing this, it will create a new dull instance object.
  */
 
+/* This structure is present in the parent to represent the DULL */
 pub struct Dull {
-    parentfd: tokio::net::UnixStream,
-    childfd:  tokio::net::UnixStream
+    pub child_stream:  tokio::net::UnixStream,
+    pub dullpid:       ForkResult
+
 }
 
-pub fn dull_process_control(_dull: Dull) {
-    loop { }
+use tokio_serde::formats::*;
+use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
+
+pub async fn dull_process_control(sock: UnixStream) {
+    let child_sock = tokio::net::UnixStream::from_std(sock).unwrap();
+
+    // stupid copy from read_control!
+    let my_read_stream = FramedRead::new(child_sock, LengthDelimitedCodec::new());
+    let mut deserialized =
+        tokio_serde::SymmetricallyFramed::new(my_read_stream, SymmetricalCbor::default());
+
+    loop {
+        if let Ok(thing) = deserialized.try_next().await {
+            match thing {
+                Some(msg) =>
+                    match msg {
+                        control::DullControl::Exit => {
+                            println!("DULL process exiting");
+                            std::process::exit(0);
+                        }
+                        control::DullControl::AdminDown { interface_index: ifn } => {
+                            println!("DULL turning off interface {}", ifn);
+                        }
+                    }
+                None => {
+                    println!("Got nothing reading from socket");
+                }
+            }
+        }
+    }
 }
 
 
 pub fn dull_namespace_daemon() -> Result<Dull, std::io::Error> {
 
+    println!("daemon start");
     // set up a pair of sockets, connected
-    let pair = tokio::net::UnixStream::pair().unwrap();
+    // let pair = tokio::net::UnixStream::pair().unwrap();
+    let pair = UnixStream::pair().unwrap();
 
-    let dull = Dull { parentfd: pair.0, childfd: pair.1 };
+    println!("daemon fork");
+    let result = unsafe{fork()}.expect("fork failed");
 
-    match unsafe{fork()}.expect("fork failed") {
+
+    match result {
         ForkResult::Parent{ child } => {
-            dull.childfd.shutdown(std::net::Shutdown::Both).unwrap();
 
-            sleep(5);
-            kill(child, SIGKILL).expect("kill failed");
+            let child_sock = tokio::net::UnixStream::from_std(pair.0).unwrap();
+            let dull = Dull { child_stream: child_sock, dullpid: result };
+
+            // close the childfd in the parent
+            //pair.1.close().unwrap();
+
+            println!("Hermes started new network namespace: {}", child);
+            return Ok(dull);
         }
         ForkResult::Child => {
 
-            // close the parentfd
-            dull.parentfd.shutdown(std::net::Shutdown::Both).unwrap();
-            dull_process_control(dull);
+            // close the parentfd in the child
+            //pair.0.close().unwrap();
+
+            println!("now in child");
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let future = dull_process_control(pair.1);
+            println!("blocking in child");
+            rt.block_on(future);
+            println!("now finished in child");
             std::process::exit(0);
         }
     }
-    return Ok(dull);
 }
