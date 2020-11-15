@@ -48,6 +48,40 @@ pub fn send_dull(_dull: &Dull, _thing: &DullControl) -> Result<bool, Error> {
     return Ok(true);
 }
 
+// this return value is TOTALLY UGLY, and it does not work.
+// so we will have to setup the readers/writers each time they are used. stupid.
+// pub fn setup_writer(writer: tokio::net::UnixStream) -> tokio_serde::Framed<tokio_util::codec::FramedWrite<tokio::net::UnixStream, tokio_util::codec::LengthDelimitedCodec>, bytes::Bytes, bytes::Bytes, tokio_serde::formats::Cbor<bytes::Bytes, bytes::Bytes>> {
+/*
+pub fn setup_writer(writer: tokio::net::UnixStream) -> impl Sink<bytes::Bytes> {
+
+    let my_write_stream = FramedWrite::new(writer, LengthDelimitedCodec::new());
+    return tokio_serde::SymmetricallyFramed::new(my_write_stream, SymmetricalCbor::default());
+}
+ */
+
+pub async fn write_control(writer: tokio::net::UnixStream, data: &DullControl) -> Result<(), std::io::Error> {
+    let my_write_stream = FramedWrite::new(writer, LengthDelimitedCodec::new());
+    let mut serialized = tokio_serde::SymmetricallyFramed::new(my_write_stream, SymmetricalCbor::default());
+
+    // write it. Assumes it does not block.
+    serialized.send(&data).await.unwrap();
+
+    return Ok(());
+}
+
+pub async fn read_control(reader: tokio::net::UnixStream) -> Result<DullControl, std::io::Error> {
+    let my_read_stream = FramedRead::new(reader, LengthDelimitedCodec::new());
+    let mut deserialized =
+        tokio_serde::SymmetricallyFramed::new(my_read_stream, SymmetricalCbor::default());
+
+    if let Some(msg) = deserialized.try_next().await.unwrap() {
+        return Ok(msg);
+    } else {
+        return Err(Error::new(ErrorKind::InvalidData, "failed to read"));
+    }
+}
+
+
 #[test]
 fn test_encode_decode_quit() {
     let data = DullControl::Exit;
@@ -76,24 +110,8 @@ fn test_encode_decode_admindown() {
 async fn read_write_admin_via_socket(data: &DullControl) -> Result<DullControl, std::io::Error> {
     let pair = tokio::net::UnixStream::pair().unwrap();
 
-    let my_write_stream = FramedWrite::new(pair.0, LengthDelimitedCodec::new());
-    let mut serialized =
-        tokio_serde::SymmetricallyFramed::new(my_write_stream, SymmetricalCbor::default());
-
-    // write it. Assumes it does not block.
-    serialized.send(&data).await.unwrap();
-
-    // read it.
-    //let d: DullControl = serde_cbor::from_reader(pair.1)?;
-    let my_read_stream = FramedRead::new(pair.1, LengthDelimitedCodec::new());
-    let mut deserialized =
-        tokio_serde::SymmetricallyFramed::new(my_read_stream, SymmetricalCbor::default());
-
-    if let Some(msg) = deserialized.try_next().await.unwrap() {
-        return Ok(msg);
-    } else {
-        return Err(Error::new(ErrorKind::InvalidData, "failed to read"));
-    }
+    write_control(pair.0, data).await.unwrap();
+    return read_control(pair.1).await;
 }
 
 macro_rules! aw {
