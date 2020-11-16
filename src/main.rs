@@ -15,8 +15,10 @@
  *
  */
 
+use nix::unistd::*;
 use futures::stream::TryStreamExt;
 use rtnetlink::{new_connection, Error, Handle};
+use std::os::unix::net::UnixStream;
 
 pub mod dull;
 pub mod control;
@@ -43,7 +45,7 @@ async fn set_link_down(handle: Handle, name: String) -> Result<(), Error> {
 }
 */
 
-async fn setup_dull_bridge(handle: Handle, name: String) -> Result<(), Error> {
+async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: String) -> Result<(), Error> {
     let _result = handle
         .link()
         .add()
@@ -63,7 +65,7 @@ async fn setup_dull_bridge(handle: Handle, name: String) -> Result<(), Error> {
         handle
             .link()
             .set(link.header.index)
-            .setns_by_pid(1u32)
+            .setns_by_pid(dull.dullpid.as_raw() as u32)
             .execute()
             .await?;
     } else {
@@ -71,20 +73,26 @@ async fn setup_dull_bridge(handle: Handle, name: String) -> Result<(), Error> {
         return Ok(());
     }
 
+
+
     return Ok(());
 }
 
-async fn parent(dull: dull::Dull) -> Result<(), String> {
+async fn parent(_rt: &tokio::runtime::Runtime, dullinit: dull::DullInit) -> Result<(), String> {
 
-    println!("setup in parent");
+    let dull = dull::Dull::from_dull_init(dullinit);
 
-    //let (connection, _handle, _) = new_connection().unwrap();
-    //tokio::spawn(connection);
+    // calling new_connection() causes a crash on the block_on() below!
+    //let (_connection, handle, _) = new_connection().unwrap();
+    //rt.spawn(connection);
 
-    //setup_dull_bridge(handle, "dull0".to_string()).await.unwrap();
+    //setup_dull_bridge(&handle, &dull, "dull0".to_string()).await.unwrap();
+
+    println!("created dull0");
 
     /* now shutdown the child */
     control::write_control(dull.child_stream, &control::DullControl::Exit).await.unwrap();
+    sleep(20);
 
     return Ok(());
 }
@@ -95,12 +103,18 @@ fn main () -> Result<(), String> {
     println!("Hermes Connect {}", VERSION);
 
     /* before doing any async stuff, start the child */
-    let dull = dull::dull_namespace_daemon().unwrap();
+    //let dull = dull::dull_namespace_daemon().unwrap();
+    let mut stream = UnixStream::connect("/run/snapd.socket").unwrap();
+    let dull = dull::DullInit { child_io: stream, dullpid: Pid::from_raw(1) };
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let future = parent(dull);
+    let future = parent(&rt, dull);
     println!("blocking in main");
+
+    // crashes here.
+    // thread 'main' panicked at 'there is no reactor running, must be called from the context of Tokio runtime', /home/mcr/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-0.2.22/src/io/driver/mod.rs:202:14
     rt.block_on(future).unwrap();
+    //rt.shutdown_on_idle().wait().unwrap();
 
     return Ok(());
 }

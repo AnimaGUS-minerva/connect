@@ -48,9 +48,22 @@ use std::os::unix::net::UnixStream;
 /* This structure is present in the parent to represent the DULL */
 pub struct Dull {
     pub child_stream:  tokio::net::UnixStream,
-    pub dullpid:       ForkResult
-
+    pub dullpid:       Pid
 }
+
+/* This structure is present in the parent to represent the DULL, before tokio */
+pub struct DullInit {
+    pub child_io:      UnixStream,
+    pub dullpid:       Pid
+}
+
+impl Dull {
+    pub fn from_dull_init(init: DullInit) -> Dull {
+        Dull { child_stream: tokio::net::UnixStream::from_std(init.child_io).unwrap(),
+               dullpid:      init.dullpid }
+    }
+}
+
 
 use tokio_serde::formats::*;
 use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
@@ -85,7 +98,7 @@ pub async fn dull_process_control(sock: UnixStream) {
 }
 
 
-pub fn dull_namespace_daemon() -> Result<Dull, std::io::Error> {
+pub fn dull_namespace_daemon() -> Result<DullInit, std::io::Error> {
 
     println!("daemon start");
     // set up a pair of sockets, connected
@@ -99,8 +112,7 @@ pub fn dull_namespace_daemon() -> Result<Dull, std::io::Error> {
     match result {
         ForkResult::Parent{ child } => {
 
-            let child_sock = tokio::net::UnixStream::from_std(pair.0).unwrap();
-            let dull = Dull { child_stream: child_sock, dullpid: result };
+            let dull = DullInit { child_io: pair.0, dullpid: child };
 
             // close the childfd in the parent
             //pair.1.close().unwrap();
