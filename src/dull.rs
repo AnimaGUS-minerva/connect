@@ -65,7 +65,7 @@ impl Dull {
 }
 
 
-pub async fn dull_process_control(sock: UnixStream) {
+pub async fn process_control(sock: UnixStream) {
     let mut child_sock = tokio::net::UnixStream::from_std(sock).unwrap();
 
     loop {
@@ -83,8 +83,7 @@ pub async fn dull_process_control(sock: UnixStream) {
     }
 }
 
-
-pub fn dull_namespace_daemon() -> Result<DullInit, std::io::Error> {
+pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
 
     println!("daemon start");
     // set up a pair of sockets, connected
@@ -117,7 +116,7 @@ pub fn dull_namespace_daemon() -> Result<DullInit, std::io::Error> {
                 .enable_all()
                 .build()
                 .unwrap();
-            let future = dull_process_control(pair.1);
+            let future = process_control(pair.1);
             println!("blocking in child");
             rt.handle().block_on(future);
             println!("now finished in child");

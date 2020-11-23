@@ -105,7 +105,7 @@ fn main () -> Result<(), String> {
     println!("Hermes Connect {}", VERSION);
 
     /* before doing any async stuff, start the child */
-    let dull = dull::dull_namespace_daemon().unwrap();
+    let dull = dull::namespace_daemon().unwrap();
 
     // tokio 0.2
     let rt = tokio::runtime::Builder::new()
