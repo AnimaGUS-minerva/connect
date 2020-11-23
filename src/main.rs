@@ -108,17 +108,16 @@ fn main () -> Result<(), String> {
     let dull = dull::dull_namespace_daemon().unwrap();
 
     // tokio 0.2
-    //let rt = tokio::runtime::Builder::new()
-    // tokio 0.3
-    let rt = tokio::runtime::Runtime::new()
+    let rt = tokio::runtime::Builder::new()
+        .threaded_scheduler()
+        .enable_all()
+        .build()
         .unwrap();
-
 
     let future = parent(&rt, dull);
     println!("blocking in main");
 
-    //rt.handle().block_on(future).unwrap();
-    rt.block_on(future).unwrap();
+    rt.handle().block_on(future).unwrap();
 
     return Ok(());
 }
