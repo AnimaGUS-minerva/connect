@@ -12,12 +12,12 @@ serde      = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
 serde_cbor = "0.11.1"
 nix        = "0.19.0"
-netlink-packet-route = { path = "/ssw/projects/pandora/connect/netlink/netlink-packet-route", version = "0.5" }
-rtnetlink     = { path = "/ssw/projects/pandora/connect/netlink/rtnetlink",     version = "0.5" }
-netlink-proto = { path = "/ssw/projects/pandora/connect/netlink/netlink-proto", version = "0.4" }
-#netlink-packet-route = { version = "*" }
-#rtnetlink     = { version = "*" }
-#netlink-proto = { version = "*" }
+#netlink-packet-route = { path = "/ssw/projects/pandora/connect/netlink/netlink-packet-route", version = "0.5" }
+#rtnetlink     = { path = "/ssw/projects/pandora/connect/netlink/rtnetlink",     version = "0.5" }
+#netlink-proto = { path = "/ssw/projects/pandora/connect/netlink/netlink-proto", version = "0.4" }
+netlink-packet-route = { version = "0.5" }
+rtnetlink     = { version = "0.5" }
+netlink-proto = { version = "0.4" }
 tokio         = { version = "0.2",    features = ["uds", "macros", "rt-threaded", "rt-core", "io-util"] }
 tokio-util    = { version = "0.2",    features = ["codec"] }
 tokio-serde   = { version = "0.7.1",  features = ["cbor" ] }
