@@ -18,25 +18,23 @@
 extern crate nix;
 extern crate tokio;
 
+use std::sync::Arc;
 use crate::control;
 //use futures::prelude::*;
 //use nix::sys::signal::*;
 use nix::unistd::*;
+use nix::sched::unshare;
+use nix::sched::CloneFlags;
 //use socket2::{Socket, Domain, Type};
 use std::os::unix::net::UnixStream;
 
+use futures::stream::StreamExt;
 // use futures::stream::TryStreamExt;
-// use rtnetlink::{new_connection, Error, Handle};
-
-/*
-  match unsafe{fork()} {
-   Ok(ForkResult::Parent { child, .. }) => {
-       println!("Continuing execution in parent process, new child has pid: {}", child);
-   }
-   Ok(ForkResult::Child) => println!("I'm a new child process"),
-   Err(_) => println!("Fork failed"),
-}
- */
+use rtnetlink::{
+    constants::{RTMGRP_IPV4_ROUTE, RTMGRP_IPV6_ROUTE},
+    new_connection,
+    sys::SocketAddr,
+};
 
 /*
  * This function forks and creates a child process that will enter a new network namespace
@@ -64,9 +62,40 @@ impl Dull {
     }
 }
 
+pub struct DullChild {
+    //pub parent_stream: Arc<tokio::net::UnixStream>,
+    pub runtime:       Arc<tokio::runtime::Runtime>
+}
 
-pub async fn process_control(sock: UnixStream) {
-    let mut child_sock = tokio::net::UnixStream::from_std(sock).unwrap();
+async fn listen_network(child: &DullChild) -> Result<(), String> {
+
+    let rt = child.runtime.clone();
+    let rt2 = child.runtime.clone();
+
+    /* process it all in the background */
+    rt2.spawn(async move {
+        // Open the netlink socket
+        let (mut connection, _, mut messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
+
+        // These flags specify what kinds of broadcast messages we want to listen for.
+        let mgroup_flags = RTMGRP_IPV4_ROUTE | RTMGRP_IPV6_ROUTE;
+
+        // A netlink socket address is created with said flags.
+        let addr = SocketAddr::new(0, mgroup_flags);
+        // Said address is bound so new conenctions and thus new message broadcasts can be received.
+        connection.socket_mut().bind(&addr).expect("failed to bind");
+        rt.spawn(connection);
+
+        while let Some((message, _)) = messages.next().await {
+            let payload = message.payload;
+            println!("Route change message - {:?}", payload);
+        }
+    });
+    Ok(())
+}
+
+pub async fn process_control(_child: &DullChild, mut child_sock: tokio::net::UnixStream) {
+    //let mut child_sock = &child.parent_stream.clone();
 
     loop {
         if let Ok(thing) = control::read_control(&mut child_sock).await {
@@ -81,6 +110,19 @@ pub async fn process_control(sock: UnixStream) {
             }
         }
     }
+}
+
+/* this calls unshare(2) to create a new network namespace */
+pub async fn create_netns(_child: &DullChild) -> Result<(), String> {
+
+    // we will want CLONE_FS at some point, having first changed to
+    // a directory suitable for core dumps.
+    // Log files will mostly go via socket opened before this call.
+    // probably want CLONE_NEWNS too
+
+    // CLONE_NEWNET is the key thing, it requires root or CAP_SYS_ADMIN.
+    unshare(CloneFlags::CLONE_NEWNET).unwrap();
+    Ok(())
 }
 
 pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
@@ -116,9 +158,25 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
                 .enable_all()
                 .build()
                 .unwrap();
-            let future = process_control(pair.1);
+
+            let parent_stream = tokio::net::UnixStream::from_std(pair.1).unwrap();
+            let childinfo = DullChild { runtime: Arc::new(rt) };
+
+            /* create a new network namespace */
+            let future0 = create_netns(&childinfo);
+            childinfo.runtime.handle().block_on(future0).unwrap();
+
+            /* arrange to listen on network events in the new network namespace */
+            let future2 = listen_network(&childinfo);
+            childinfo.runtime.handle().block_on(future2).unwrap();
+
+            /* let parent know that we ready */
+            //send_
+
+            /* listen to commands from the parent */
+            let future1 = process_control(&childinfo, parent_stream);
             println!("blocking in child");
-            rt.handle().block_on(future);
+            childinfo.runtime.handle().block_on(future1);
             println!("now finished in child");
             std::process::exit(0);
         }

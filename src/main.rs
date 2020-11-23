@@ -90,12 +90,10 @@ async fn parent(rt: &tokio::runtime::Runtime, dullinit: dull::DullInit) -> Resul
     println!("created dull0");
 
     /* now shutdown the child */
-    sleep(5);
+    sleep(200);
     control::write_control(&mut dull.child_stream, &control::DullControl::Exit).await.unwrap();
 
     println!("child shutdown");
-    sleep(2);
-
     return Ok(());
 }
 
