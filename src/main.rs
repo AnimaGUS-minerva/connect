@@ -18,7 +18,7 @@
 use nix::unistd::*;
 use futures::stream::TryStreamExt;
 use rtnetlink::{new_connection, Error, Handle};
-use std::os::unix::net::UnixStream;
+//use std::os::unix::net::UnixStream;
 
 pub mod dull;
 pub mod control;
@@ -80,7 +80,7 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: String) -> 
 
 async fn parent(rt: &tokio::runtime::Runtime, dullinit: dull::DullInit) -> Result<(), String> {
 
-    let dull = dull::Dull::from_dull_init(dullinit);
+    let mut dull = dull::Dull::from_dull_init(dullinit);
 
     // calling new_connection() causes a crash on the block_on() below!
     let (connection, handle, _) = new_connection().unwrap();
@@ -91,7 +91,7 @@ async fn parent(rt: &tokio::runtime::Runtime, dullinit: dull::DullInit) -> Resul
 
     /* now shutdown the child */
     sleep(5);
-    control::write_control(dull.child_stream, &control::DullControl::Exit).await.unwrap();
+    control::write_control(&mut dull.child_stream, &control::DullControl::Exit).await.unwrap();
 
     println!("child shutdown");
     sleep(2);

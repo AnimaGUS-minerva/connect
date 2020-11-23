@@ -19,7 +19,7 @@ extern crate nix;
 extern crate tokio;
 
 use crate::control;
-use futures::prelude::*;
+//use futures::prelude::*;
 //use nix::sys::signal::*;
 use nix::unistd::*;
 //use socket2::{Socket, Domain, Type};
@@ -65,32 +65,18 @@ impl Dull {
 }
 
 
-use tokio_serde::formats::*;
-use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
-
 pub async fn dull_process_control(sock: UnixStream) {
-    let child_sock = tokio::net::UnixStream::from_std(sock).unwrap();
-
-    // stupid copy from read_control!
-    let my_read_stream = FramedRead::new(child_sock, LengthDelimitedCodec::new());
-    let mut deserialized =
-        tokio_serde::SymmetricallyFramed::new(my_read_stream, SymmetricalCbor::default());
+    let mut child_sock = tokio::net::UnixStream::from_std(sock).unwrap();
 
     loop {
-        if let Ok(thing) = deserialized.try_next().await {
+        if let Ok(thing) = control::read_control(&mut child_sock).await {
             match thing {
-                Some(msg) =>
-                    match msg {
-                        control::DullControl::Exit => {
-                            println!("DULL process exiting");
-                            std::process::exit(0);
-                        }
-                        control::DullControl::AdminDown { interface_index: ifn } => {
-                            println!("DULL turning off interface {}", ifn);
-                        }
-                    }
-                None => {
-                    println!("Got nothing reading from socket");
+                control::DullControl::Exit => {
+                    println!("DULL process exiting");
+                    std::process::exit(0);
+                }
+                control::DullControl::AdminDown { interface_index: ifn } => {
+                    println!("DULL turning off interface {}", ifn);
                 }
             }
         }
@@ -126,10 +112,14 @@ pub fn dull_namespace_daemon() -> Result<DullInit, std::io::Error> {
             //pair.0.close().unwrap();
 
             println!("now in child");
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = tokio::runtime::Builder::new()
+                .threaded_scheduler()
+                .enable_all()
+                .build()
+                .unwrap();
             let future = dull_process_control(pair.1);
             println!("blocking in child");
-            rt.block_on(future);
+            rt.handle().block_on(future);
             println!("now finished in child");
             std::process::exit(0);
         }

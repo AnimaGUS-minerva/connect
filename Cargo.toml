@@ -19,12 +19,13 @@ netlink-proto = { path = "/ssw/projects/pandora/connect/netlink/netlink-proto", 
 #rtnetlink     = { version = "*" }
 #netlink-proto = { version = "*" }
 tokio         = { version = "0.2",    features = ["uds", "macros", "rt-threaded", "rt-core", "io-util"] }
-tokio-util    = { version = "0.3",    features = ["codec"] }
+tokio-util    = { version = "0.2",    features = ["codec"] }
 tokio-serde   = { version = "0.7.1",  features = ["cbor" ] }
 bytes         = "*"
 futures-sink  = "*"
 
 [dev-dependencies]
-# none
+tokio-test    = "0.2"
+
 
 

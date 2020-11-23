@@ -18,13 +18,14 @@
 extern crate serde;
 extern crate serde_cbor;
 
-use futures::prelude::*;
+//use futures::prelude::*;
 use serde::{Serialize, Deserialize};
 use serde_cbor::{to_vec,from_slice};
-use std::io::{Error, ErrorKind};
-use tokio_serde::formats::*;
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
+use std::io::Error;
+//use tokio_serde::formats::*;
+//use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use std::os::unix::net::UnixStream;
+use tokio::io::{AsyncWriteExt, AsyncReadExt};
 
 use crate::dull::Dull;
 
@@ -35,12 +36,12 @@ pub enum DullControl {
 }
 
 pub fn encode_msg(thing: &DullControl) -> Vec<u8> {
-    // encode it.
+    // encode it in CBOR.
     return to_vec(&thing).unwrap();
 }
 
-pub fn decode_msg(msg: &Vec<u8>) -> DullControl {
-    // decode it.
+pub fn decode_msg(msg: &[u8]) -> DullControl {
+    // decode it from CBOR.
     return from_slice(msg).unwrap();
 }
 
@@ -49,37 +50,16 @@ pub fn send_dull(_dull: &Dull, _thing: &DullControl) -> Result<bool, Error> {
     return Ok(true);
 }
 
-// this return value is TOTALLY UGLY, and it does not work.
-// so we will have to setup the readers/writers each time they are used. stupid.
-// pub fn setup_writer(writer: tokio::net::UnixStream) -> tokio_serde::Framed<tokio_util::codec::FramedWrite<tokio::net::UnixStream, tokio_util::codec::LengthDelimitedCodec>, bytes::Bytes, bytes::Bytes, tokio_serde::formats::Cbor<bytes::Bytes, bytes::Bytes>> {
-/*
-pub fn setup_writer(writer: tokio::net::UnixStream) -> impl Sink<bytes::Bytes> {
-
-    let my_write_stream = FramedWrite::new(writer, LengthDelimitedCodec::new());
-    return tokio_serde::SymmetricallyFramed::new(my_write_stream, SymmetricalCbor::default());
-}
- */
-
-pub async fn write_control(writer: tokio::net::UnixStream, data: &DullControl) -> Result<(), std::io::Error> {
-    let my_write_stream = FramedWrite::new(writer, LengthDelimitedCodec::new());
-    let mut serialized = tokio_serde::SymmetricallyFramed::new(my_write_stream, SymmetricalCbor::default());
-
-    // write it. Assumes it does not block.
-    serialized.send(&data).await.unwrap();
-
-    return Ok(());
+pub async fn write_control(writer: &mut tokio::net::UnixStream, data: &DullControl) -> Result<(), std::io::Error> {
+    return writer.write_all(&encode_msg(data)).await;
 }
 
-pub async fn read_control(reader: tokio::net::UnixStream) -> Result<DullControl, std::io::Error> {
-    let my_read_stream = FramedRead::new(reader, LengthDelimitedCodec::new());
-    let mut deserialized =
-        tokio_serde::SymmetricallyFramed::new(my_read_stream, SymmetricalCbor::default());
+pub async fn read_control(reader: &mut tokio::net::UnixStream) -> Result<DullControl, std::io::Error> {
+    let mut control_buffer = [0; 256];
+    let n = reader.read(&mut control_buffer[..]).await?;
 
-    if let Some(msg) = deserialized.try_next().await.unwrap() {
-        return Ok(msg);
-    } else {
-        return Err(Error::new(ErrorKind::InvalidData, "failed to read"));
-    }
+    let dc = decode_msg(&control_buffer[0..n]);
+    return Ok(dc);
 }
 
 
@@ -109,16 +89,18 @@ fn test_encode_decode_admindown() {
 }
 
 /* this function just helps the test case below, since tests can not do await */
+#[allow(dead_code)]
 async fn read_write_admin_via_socket(data: &DullControl) -> Result<DullControl, std::io::Error> {
     let pair = UnixStream::pair().unwrap();
 
-    let reader = tokio::net::UnixStream::from_std(pair.1).unwrap();
-    let writer = tokio::net::UnixStream::from_std(pair.0).unwrap();
+    let mut reader = tokio::net::UnixStream::from_std(pair.1).unwrap();
+    let mut writer = tokio::net::UnixStream::from_std(pair.0).unwrap();
 
-    write_control(writer, data).await.unwrap();
-    return read_control(reader).await;
+    write_control(&mut writer, data).await.unwrap();
+    return read_control(&mut reader).await;
 }
 
+#[allow(unused_macros)]
 macro_rules! aw {
     ($e:expr) => {
         tokio_test::block_on($e)
