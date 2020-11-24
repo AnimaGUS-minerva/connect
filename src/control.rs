@@ -21,7 +21,8 @@ extern crate serde_cbor;
 //use futures::prelude::*;
 use serde::{Serialize, Deserialize};
 use serde_cbor::{to_vec,from_slice};
-use std::io::Error;
+use std::io::{Error, ErrorKind};
+use std::net::Shutdown;
 //use tokio_serde::formats::*;
 //use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use std::os::unix::net::UnixStream;
@@ -112,4 +113,30 @@ fn test_write_read_admin_via_socket() {
     let data = DullControl::AdminDown { interface_index: 5u32 };
 
     assert_eq!(aw!(read_write_admin_via_socket(&data)).unwrap(), data);
+}
+
+#[allow(dead_code)]
+async fn write_admin_via_closed_socket(data: &DullControl) -> Result<(), std::io::Error> {
+    let pair = UnixStream::pair().unwrap();
+
+    let reader = tokio::net::UnixStream::from_std(pair.1).unwrap();
+    let mut writer = tokio::net::UnixStream::from_std(pair.0).unwrap();
+
+    // kill the reading side.
+    reader.shutdown(Shutdown::Both).unwrap();
+
+    match write_control(&mut writer, data).await {
+        Err(e) => match e.kind() {
+            ErrorKind::BrokenPipe  => { return Ok(()); },
+            _                      => { return Err(e); }
+        }
+        _ => { return Ok(()); }
+    }
+}
+
+#[test]
+fn test_write_when_socket_closed() {
+    let data = DullControl::AdminDown { interface_index: 5u32 };
+
+    assert_eq!(aw!(write_admin_via_closed_socket(&data)).unwrap(), ());
 }
