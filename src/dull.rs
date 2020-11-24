@@ -18,6 +18,9 @@
 extern crate nix;
 extern crate tokio;
 
+use std::fs::OpenOptions;
+use gag::Redirect;
+
 use std::sync::Arc;
 use crate::control;
 use nix::unistd::*;
@@ -147,6 +150,27 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
 
             // close the parentfd in the child
             //pair.0.close().unwrap();
+
+            println!("Child redirected");
+
+            // Open a log
+            let log = OpenOptions::new()
+                .truncate(true)
+                .read(true)
+                .create(true)
+                .write(true)
+                .open("child_stdout.log")
+                .unwrap();
+            let _out_redirect = Redirect::stdout(log).unwrap();
+            // Log for stderr
+            let log = OpenOptions::new()
+                .truncate(true)
+                .read(true)
+                .create(true)
+                .write(true)
+                .open("child_stderr.log")
+                .unwrap();
+            let _err_redirect = Redirect::stderr(log).unwrap();
 
             println!("now in child");
             let rt = tokio::runtime::Builder::new()

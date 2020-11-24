@@ -23,6 +23,7 @@ tokio-util    = { version = "0.2",    features = ["codec"] }
 tokio-serde   = { version = "0.7.1",  features = ["cbor" ] }
 bytes         = "*"
 futures-sink  = "*"
+gag           = "*"
 
 [dev-dependencies]
 tokio-test    = "0.2"
