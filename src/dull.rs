@@ -27,7 +27,7 @@ use std::os::unix::net::UnixStream;
 
 use futures::stream::StreamExt;
 use rtnetlink::{
-    constants::{RTMGRP_IPV4_ROUTE, RTMGRP_IPV6_ROUTE},
+    constants::{RTMGRP_IPV4_ROUTE, RTMGRP_IPV6_ROUTE, RTMGRP_LINK},
     new_connection,
     sys::SocketAddr,
 };
@@ -74,7 +74,7 @@ async fn listen_network(child: &DullChild) -> Result<(), String> {
         let (mut connection, _, mut messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
 
         // These flags specify what kinds of broadcast messages we want to listen for.
-        let mgroup_flags = RTMGRP_IPV4_ROUTE | RTMGRP_IPV6_ROUTE;
+        let mgroup_flags = RTMGRP_IPV4_ROUTE | RTMGRP_IPV6_ROUTE | RTMGRP_LINK;
 
         // A netlink socket address is created with said flags.
         let addr = SocketAddr::new(0, mgroup_flags);
