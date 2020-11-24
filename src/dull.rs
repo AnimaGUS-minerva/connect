@@ -20,16 +20,12 @@ extern crate tokio;
 
 use std::sync::Arc;
 use crate::control;
-//use futures::prelude::*;
-//use nix::sys::signal::*;
 use nix::unistd::*;
 use nix::sched::unshare;
 use nix::sched::CloneFlags;
-//use socket2::{Socket, Domain, Type};
 use std::os::unix::net::UnixStream;
 
 use futures::stream::StreamExt;
-// use futures::stream::TryStreamExt;
 use rtnetlink::{
     constants::{RTMGRP_IPV4_ROUTE, RTMGRP_IPV6_ROUTE},
     new_connection,
