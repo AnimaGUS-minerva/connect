@@ -28,23 +28,6 @@ static VERSION: &str = "1.0.0";
 // static mut ARGC: isize = 0 as isize;
 // static mut ARGV: *mut *mut i8 = 0 as *mut *mut i8;
 
-/*
-async fn set_link_down(handle: Handle, name: String) -> Result<(), Error> {
-    let mut links = handle.link().get().set_name_filter(name.clone()).execute();
-    if let Some(link) = links.try_next().await? {
-        handle
-            .link()
-            .set(link.header.index)
-            .down()
-            .execute()
-            .await?
-    } else {
-        println!("no link link {} found", name);
-    }
-    Ok(())
-}
-*/
-
 async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: String) -> Result<(), Error> {
     let _result = handle
         .link()
