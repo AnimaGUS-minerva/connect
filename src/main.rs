@@ -18,6 +18,7 @@
 use nix::unistd::*;
 use futures::stream::TryStreamExt;
 use rtnetlink::{new_connection, Error, Handle};
+use std::io::ErrorKind;
 //use std::os::unix::net::UnixStream;
 
 pub mod dull;
@@ -61,6 +62,18 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: String) -> 
     return Ok(());
 }
 
+async fn exit_child(dull: &mut dull::Dull) {
+    let result = control::write_control(&mut dull.child_stream, &control::DullControl::Exit).await;
+
+    match result  {
+        Err(e) => match e.kind() {
+            ErrorKind::BrokenPipe  => { return (); },
+            _                      => { return (); }  // maybe error.
+        }
+        _ => { return (); }
+    }
+}
+
 async fn parent(rt: &tokio::runtime::Runtime, dullinit: dull::DullInit) -> Result<(), String> {
 
     let mut dull = dull::Dull::from_dull_init(dullinit);
@@ -74,7 +87,7 @@ async fn parent(rt: &tokio::runtime::Runtime, dullinit: dull::DullInit) -> Resul
 
     /* now shutdown the child */
     sleep(200);
-    control::write_control(&mut dull.child_stream, &control::DullControl::Exit).await.unwrap();
+    exit_child(&mut dull).await;
 
     println!("child shutdown");
     return Ok(());
