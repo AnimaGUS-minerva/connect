@@ -94,8 +94,6 @@ async fn listen_network(child: &DullChild) -> Result<(), String> {
 }
 
 pub async fn process_control(_child: &DullChild, mut child_sock: tokio::net::UnixStream) {
-    //let mut child_sock = &child.parent_stream.clone();
-
     loop {
         if let Ok(thing) = control::read_control(&mut child_sock).await {
             match thing {
@@ -122,6 +120,27 @@ pub async fn create_netns(_child: &DullChild) -> Result<(), String> {
     // CLONE_NEWNET is the key thing, it requires root or CAP_SYS_ADMIN.
     unshare(CloneFlags::CLONE_NEWNET).unwrap();
     Ok(())
+}
+
+async fn child_processing(childinfo: &DullChild, sock: UnixStream) {
+    let parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
+
+
+    /* create a new network namespace */
+    let future0 = create_netns(&childinfo);
+    childinfo.runtime.handle().block_on(future0).unwrap();
+
+    /* arrange to listen on network events in the new network namespace */
+    let future2 = listen_network(&childinfo);
+    childinfo.runtime.handle().block_on(future2).unwrap();
+
+    /* let parent know that we ready */
+    //send_
+
+    /* listen to commands from the parent */
+    let future1 = process_control(&childinfo, parent_stream);
+    println!("blocking in child");
+    childinfo.runtime.handle().block_on(future1);
 }
 
 pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
@@ -179,24 +198,10 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
                 .build()
                 .unwrap();
 
-            let parent_stream = tokio::net::UnixStream::from_std(pair.1).unwrap();
-            let childinfo = DullChild { runtime: Arc::new(rt) };
+            let childinfo = DullChild { runtime:        Arc::new(rt) };
 
-            /* create a new network namespace */
-            let future0 = create_netns(&childinfo);
-            childinfo.runtime.handle().block_on(future0).unwrap();
+            let _future1 = child_processing(&childinfo, pair.1);
 
-            /* arrange to listen on network events in the new network namespace */
-            let future2 = listen_network(&childinfo);
-            childinfo.runtime.handle().block_on(future2).unwrap();
-
-            /* let parent know that we ready */
-            //send_
-
-            /* listen to commands from the parent */
-            let future1 = process_control(&childinfo, parent_stream);
-            println!("blocking in child");
-            childinfo.runtime.handle().block_on(future1);
             println!("now finished in child");
             std::process::exit(0);
         }
