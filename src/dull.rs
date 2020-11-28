@@ -27,8 +27,12 @@ use nix::unistd::*;
 use nix::sched::unshare;
 use nix::sched::CloneFlags;
 use std::os::unix::net::UnixStream;
+use std::net::Ipv6Addr;
+use std::collections::HashMap;
 
+use futures::lock::Mutex;
 use futures::stream::StreamExt;
+use netlink_packet_route::link::nlas::Nla;
 use rtnetlink::{
     constants::{RTMGRP_IPV4_ROUTE, RTMGRP_IPV6_ROUTE, RTMGRP_LINK},
     new_connection,
@@ -66,29 +70,72 @@ impl Dull {
     }
 }
 
-pub struct DullChild {
-    //pub parent_stream: Arc<tokio::net::UnixStream>,
-    pub runtime:       Arc<tokio::runtime::Runtime>
+#[derive(Debug, PartialEq)]
+pub struct DullInterface {
+    pub ifindex:       u32,
+    pub ifname:        String,
+    pub mtu:           u32,
+    pub linklayer6:    Ipv6Addr,
+    pub oper_state:    bool,
 }
 
-fn dump_link_info(lm: LinkMessage) {
+pub struct DullData {
+    pub interfaces:    HashMap<u32, DullInterface>
+}
 
-    for nlas in lm.nlas {
-        println!("New link: {:?} ", nlas);
-//        println!("New link: {} found with OperState: {}", nlas.IfName, nlas.OperState);
-//        for addr in nlas.Address {
-//            println!("  address {} ", addr);
-//        }
+impl DullData {
+    pub fn empty() -> DullData {
+        return DullData { interfaces: HashMap::new() }
     }
 }
 
-async fn listen_network(child: &DullChild) -> Result<(), String> {
 
+pub struct DullChild {
+    //pub parent_stream: Arc<tokio::net::UnixStream>,
+    pub runtime:       Arc<tokio::runtime::Runtime>,
+    pub data:          Mutex<DullData>
+}
+
+async fn dump_link_info(dull: &DullChild, lm: LinkMessage) {
+
+    let lh = lm.header;
+    let ifindex = lh.index;
+    println!("ifindex: {:?} ", ifindex);
+
+    let mut data = dull.data.lock().await;
+
+    let ifn = data.interfaces.entry(ifindex).or_insert_with(|| { DullInterface {
+        ifindex: ifindex,
+        ifname:  "".to_string(),
+        mtu:     0,
+        linklayer6: Ipv6Addr::UNSPECIFIED,
+        oper_state: false
+    }});
+    //ifn.ifindex = ifindex;
+
+    for nlas in lm.nlas {
+        match nlas {
+            Nla::IfName(name) => {
+                println!("ifname: {}", name);
+                ifn.ifname = name;
+            },
+            Nla::Mtu(bytes) => {
+                println!("mtu: {}", bytes);
+                ifn.mtu = bytes;
+            },
+            _ => { println!("extra data: {:?} ", nlas); }
+        }
+    }
+}
+
+async fn listen_network(childinfo: &Arc<DullChild>) -> Result<(), String> {
+
+    let child = childinfo.clone();   /* take reference to childinfo, for move below */
     let rt = child.runtime.clone();
     let rt2 = child.runtime.clone();
 
     /* process it all in the background */
-    rt2.spawn(async move {
+    rt2.spawn(async move {               // moves child into spawn.
         // Open the netlink socket
         let (mut connection, _, mut messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
 
@@ -105,7 +152,7 @@ async fn listen_network(child: &DullChild) -> Result<(), String> {
             let payload = message.payload;
             match payload {
                 InnerMessage(NewLink(stuff)) => {
-                    dump_link_info(stuff);
+                    dump_link_info(&child, stuff).await;
                 }
                 _ => { println!("generic message type: {} skipped", payload.message_type()); }
             }
@@ -114,7 +161,7 @@ async fn listen_network(child: &DullChild) -> Result<(), String> {
     Ok(())
 }
 
-pub async fn process_control(_child: &DullChild, mut child_sock: tokio::net::UnixStream) {
+pub async fn process_control(_child: Arc<DullChild>, mut child_sock: tokio::net::UnixStream) {
     loop {
         if let Ok(thing) = control::read_control(&mut child_sock).await {
             match thing {
@@ -144,7 +191,7 @@ pub async fn create_netns(_child: &DullChild) -> Result<(), String> {
     Ok(())
 }
 
-async fn child_processing(childinfo: &DullChild, sock: UnixStream) {
+async fn child_processing(childinfo: Arc<DullChild>, sock: UnixStream) {
     let mut parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
 
     /* create a new network namespace */
@@ -161,7 +208,7 @@ async fn child_processing(childinfo: &DullChild, sock: UnixStream) {
 
     /* listen to commands from the parent */
     println!("blocking in child");
-    process_control(&childinfo, parent_stream).await;
+    process_control(childinfo, parent_stream).await;
 }
 
 pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
@@ -219,10 +266,15 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
                 .build()
                 .unwrap();
 
-            let childinfo = DullChild { runtime:        Arc::new(rt) };
+            let childinfo = DullChild { runtime:        Arc::new(rt),
+                                        data:           Mutex::new(DullData::empty())
+            };
 
-            let future1 = child_processing(&childinfo, pair.1);
-            childinfo.runtime.handle().block_on(future1);
+            let art = childinfo.runtime.clone();
+            let child = Arc::new(childinfo);
+
+            let future1 = child_processing(child, pair.1);
+            art.handle().block_on(future1);
 
             println!("now finished in child");
             std::process::exit(0);
