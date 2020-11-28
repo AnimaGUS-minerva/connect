@@ -62,7 +62,7 @@ pub async fn read_control(reader: &mut tokio::net::UnixStream) -> Result<DullCon
     let mut n = 0;
     while n == 0 {
         n = reader.read(&mut control_buffer[..]).await?;
-        println!("Got a message of length {}", n);
+        //println!("Got a message of length {}", n);
     }
 
     let dc = decode_msg(&control_buffer[0..n]);
