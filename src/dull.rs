@@ -127,21 +127,20 @@ async fn child_processing(childinfo: &DullChild, sock: UnixStream) {
     let mut parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
 
     /* create a new network namespace */
-    let future0 = create_netns(&childinfo);
-    childinfo.runtime.handle().block_on(future0).unwrap();
+    println!("future0");
+    create_netns(&childinfo).await.unwrap();
 
     /* arrange to listen on network events in the new network namespace */
-    let future2 = listen_network(&childinfo);
-    childinfo.runtime.handle().block_on(future2).unwrap();
+    println!("future2");
+    listen_network(&childinfo).await.unwrap();
 
     /* let parent know that we ready */
     println!("child says it is ready");
     control::write_child_ready(&mut parent_stream).await.unwrap();
 
     /* listen to commands from the parent */
-    let future1 = process_control(&childinfo, parent_stream);
     println!("blocking in child");
-    childinfo.runtime.handle().block_on(future1);
+    process_control(&childinfo, parent_stream).await;
 }
 
 pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
@@ -201,7 +200,8 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
 
             let childinfo = DullChild { runtime:        Arc::new(rt) };
 
-            let _future1 = child_processing(&childinfo, pair.1);
+            let future1 = child_processing(&childinfo, pair.1);
+            childinfo.runtime.handle().block_on(future1);
 
             println!("now finished in child");
             std::process::exit(0);
