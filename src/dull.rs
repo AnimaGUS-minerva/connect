@@ -34,6 +34,11 @@ use rtnetlink::{
     new_connection,
     sys::SocketAddr,
 };
+use netlink_packet_route::{
+    NetlinkPayload::InnerMessage,
+    RtnlMessage::NewLink,
+    LinkMessage,
+};
 
 /*
  * This function forks and creates a child process that will enter a new network namespace
@@ -66,6 +71,17 @@ pub struct DullChild {
     pub runtime:       Arc<tokio::runtime::Runtime>
 }
 
+fn dump_link_info(lm: LinkMessage) {
+
+    for nlas in lm.nlas {
+        println!("New link: {:?} ", nlas);
+//        println!("New link: {} found with OperState: {}", nlas.IfName, nlas.OperState);
+//        for addr in nlas.Address {
+//            println!("  address {} ", addr);
+//        }
+    }
+}
+
 async fn listen_network(child: &DullChild) -> Result<(), String> {
 
     let rt = child.runtime.clone();
@@ -87,7 +103,12 @@ async fn listen_network(child: &DullChild) -> Result<(), String> {
 
         while let Some((message, _)) = messages.next().await {
             let payload = message.payload;
-            println!("Route change message - {:?}", payload);
+            match payload {
+                InnerMessage(NewLink(stuff)) => {
+                    dump_link_info(stuff);
+                }
+                _ => { println!("generic message type: {} skipped", payload.message_type()); }
+            }
         }
     });
     Ok(())
