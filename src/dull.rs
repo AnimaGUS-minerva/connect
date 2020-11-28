@@ -87,6 +87,45 @@ impl DullData {
     pub fn empty() -> DullData {
         return DullData { interfaces: HashMap::new() }
     }
+
+    pub fn store_link_info(self: &mut DullData, lm: LinkMessage) {
+
+        let lh = lm.header;
+        let ifindex = lh.index;
+        println!("ifindex: {:?} ", ifindex);
+
+        let ifn = self.interfaces.entry(ifindex).or_insert_with(|| { DullInterface {
+            ifindex: ifindex,
+            ifname:  "".to_string(),
+            mtu:     0,
+            linklayer6: Ipv6Addr::UNSPECIFIED,
+            oper_state: false
+        }});
+        //ifn.ifindex = ifindex;
+
+        for nlas in lm.nlas {
+            match nlas {
+                Nla::IfName(name) => {
+                    println!("ifname: {}", name);
+                    ifn.ifname = name;
+                },
+                Nla::Mtu(bytes) => {
+                    println!("mtu: {}", bytes);
+                    ifn.mtu = bytes;
+                },
+                _ => {
+                    //println!("extra data: {:?} ", nlas);
+                }
+            }
+        }
+    }
+}
+
+async fn gather_link_info(dull: &DullChild, lm: LinkMessage) {
+
+    let mut data = dull.data.lock().await;
+
+    data.store_link_info(lm);
 }
 
 
@@ -96,37 +135,6 @@ pub struct DullChild {
     pub data:          Mutex<DullData>
 }
 
-async fn dump_link_info(dull: &DullChild, lm: LinkMessage) {
-
-    let lh = lm.header;
-    let ifindex = lh.index;
-    println!("ifindex: {:?} ", ifindex);
-
-    let mut data = dull.data.lock().await;
-
-    let ifn = data.interfaces.entry(ifindex).or_insert_with(|| { DullInterface {
-        ifindex: ifindex,
-        ifname:  "".to_string(),
-        mtu:     0,
-        linklayer6: Ipv6Addr::UNSPECIFIED,
-        oper_state: false
-    }});
-    //ifn.ifindex = ifindex;
-
-    for nlas in lm.nlas {
-        match nlas {
-            Nla::IfName(name) => {
-                println!("ifname: {}", name);
-                ifn.ifname = name;
-            },
-            Nla::Mtu(bytes) => {
-                println!("mtu: {}", bytes);
-                ifn.mtu = bytes;
-            },
-            _ => { println!("extra data: {:?} ", nlas); }
-        }
-    }
-}
 
 async fn listen_network(childinfo: &Arc<DullChild>) -> Result<(), String> {
 
@@ -152,7 +160,7 @@ async fn listen_network(childinfo: &Arc<DullChild>) -> Result<(), String> {
             let payload = message.payload;
             match payload {
                 InnerMessage(NewLink(stuff)) => {
-                    dump_link_info(&child, stuff).await;
+                    gather_link_info(&child, stuff).await;
                 }
                 _ => { println!("generic message type: {} skipped", payload.message_type()); }
             }
