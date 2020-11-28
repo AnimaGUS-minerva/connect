@@ -78,11 +78,27 @@ async fn parent(rt: &tokio::runtime::Runtime, dullinit: dull::DullInit) -> Resul
 
     let mut dull = dull::Dull::from_dull_init(dullinit);
 
+    // wait for hello from child.
+    println!("waiting for hello from child");
+    while let Ok(msg) = control::read_control(&mut dull.child_stream).await {
+        match msg {
+            control::DullControl::ChildReady => break,
+            _ => {}
+        }
+    }
+
+    println!("starting netlink thread");
     // calling new_connection() causes a crash on the block_on() below!
     let (connection, handle, _) = new_connection().unwrap();
     rt.spawn(connection);
 
-    setup_dull_bridge(&handle, &dull, "dull0".to_string()).await.unwrap();
+    println!("creating dull0");
+    let bridge = setup_dull_bridge(&handle, &dull, "dull0".to_string()).await;
+    match bridge {
+        Err(e) => { println!("Failing to create dull: {}", e); return Ok(()); },
+        _ => {}
+    };
+
     println!("created dull0");
 
     /* now shutdown the child */

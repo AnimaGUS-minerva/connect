@@ -33,7 +33,8 @@ use crate::dull::Dull;
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum DullControl {
     Exit,
-    AdminDown { interface_index: u32 }
+    AdminDown { interface_index: u32 },
+    ChildReady
 }
 
 pub fn encode_msg(thing: &DullControl) -> Vec<u8> {
@@ -57,10 +58,27 @@ pub async fn write_control(writer: &mut tokio::net::UnixStream, data: &DullContr
 
 pub async fn read_control(reader: &mut tokio::net::UnixStream) -> Result<DullControl, std::io::Error> {
     let mut control_buffer = [0; 256];
-    let n = reader.read(&mut control_buffer[..]).await?;
+
+    let mut n = 0;
+    while n == 0 {
+        n = reader.read(&mut control_buffer[..]).await?;
+        println!("Got a message of length {}", n);
+    }
 
     let dc = decode_msg(&control_buffer[0..n]);
     return Ok(dc);
+}
+
+pub async fn write_child_ready(mut writer: &mut tokio::net::UnixStream) -> Result<(), std::io::Error> {
+    let result = write_control(&mut writer, &DullControl::ChildReady).await;
+
+    match result  {
+        Err(e) => match e.kind() {
+            ErrorKind::BrokenPipe  => { return Ok(()); }, // maybe die?
+            _                      => { return Ok(()); }  // maybe error.
+        }
+        _ => { return Ok(()); }
+    }
 }
 
 

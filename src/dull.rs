@@ -104,6 +104,7 @@ pub async fn process_control(_child: &DullChild, mut child_sock: tokio::net::Uni
                 control::DullControl::AdminDown { interface_index: ifn } => {
                     println!("DULL turning off interface {}", ifn);
                 }
+                control::DullControl::ChildReady => {} // nothing to do
             }
         }
     }
@@ -123,8 +124,7 @@ pub async fn create_netns(_child: &DullChild) -> Result<(), String> {
 }
 
 async fn child_processing(childinfo: &DullChild, sock: UnixStream) {
-    let parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
-
+    let mut parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
 
     /* create a new network namespace */
     let future0 = create_netns(&childinfo);
@@ -135,7 +135,8 @@ async fn child_processing(childinfo: &DullChild, sock: UnixStream) {
     childinfo.runtime.handle().block_on(future2).unwrap();
 
     /* let parent know that we ready */
-    //send_
+    println!("child says it is ready");
+    control::write_child_ready(&mut parent_stream).await.unwrap();
 
     /* listen to commands from the parent */
     let future1 = process_control(&childinfo, parent_stream);
