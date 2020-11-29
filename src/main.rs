@@ -32,7 +32,7 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: String) -> 
     let _result = handle
         .link()
         .add()
-        .veth("dull0".into(), "pdull0".into())
+        .veth("dull0".into(), "pull0".into())
         .execute()
         .await
         .map_err(|e| format!("{}", e));
