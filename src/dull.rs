@@ -205,7 +205,46 @@ pub async fn create_netns(_child: &DullChild) -> Result<(), String> {
     // probably want CLONE_NEWNS too
 
     // CLONE_NEWNET is the key thing, it requires root or CAP_SYS_ADMIN.
-    unshare(CloneFlags::CLONE_NEWNET).unwrap();
+    // CLONE_NEWNS because we have to remount /sys to get updated info about
+    //             the network devices in /sys
+    unshare(CloneFlags::CLONE_NEWNET|CloneFlags::CLONE_NEWNS).unwrap();
+
+    /* explicitely enter the new network name space */
+    {
+        let netns = File::open("/proc/self/ns/net").unwrap();
+        let netfd = netns.as_raw_fd();
+        setns(netfd, CloneFlags::CLONE_NEWNET).unwrap();
+    }
+
+    /* explicitely enter the new mount name space */
+    {
+        let mntns = File::open("/proc/self/ns/mnt").unwrap();
+        let mntfd = mntns.as_raw_fd();
+        setns(mntfd, CloneFlags::CLONE_NEWNS).unwrap();
+    }
+
+    {
+        // touch file network name space into /run
+        let _nsname = File::create("/var/run/netns/dull").unwrap();
+    }
+
+    Command::new("mount")
+        .arg("-t")
+        .arg("bind")
+        .arg("/proc/self/ns/net")
+        .arg("/run/netns/dull")
+        .status()
+        .expect("remount of /sys failed");
+
+    // stackoverflow article (can not find it) says to mount /sys again.
+    Command::new("mount")
+        .arg("-t")
+        .arg("sysfs")
+        .arg("none")
+        .arg("/sys")
+        .status()
+        .expect("remount of /sys failed");
+
     Ok(())
 }
 
