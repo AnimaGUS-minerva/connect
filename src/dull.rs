@@ -19,17 +19,19 @@ extern crate nix;
 extern crate tokio;
 
 use std::fs::OpenOptions;
+use std::fs::File;
 use gag::Redirect;
 
 use std::sync::Arc;
 use crate::control;
 use nix::unistd::*;
-use nix::sched::unshare;
+use nix::sched::{unshare,setns};
 use nix::sched::CloneFlags;
 use std::os::unix::net::UnixStream;
+use std::os::unix::io::AsRawFd;
 use std::net::Ipv6Addr;
 use std::collections::HashMap;
-
+use std::process::Command;
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
 use netlink_packet_route::link::nlas::Nla;
@@ -80,12 +82,13 @@ pub struct DullInterface {
 }
 
 pub struct DullData {
-    pub interfaces:    HashMap<u32, DullInterface>
+    pub interfaces:    HashMap<u32, DullInterface>,
+    pub cmd_cnt:       u32
 }
 
 impl DullData {
     pub fn empty() -> DullData {
-        return DullData { interfaces: HashMap::new() }
+        return DullData { interfaces: HashMap::new(), cmd_cnt: 0 }
     }
 
     pub fn store_link_info(self: &mut DullData, lm: LinkMessage) {
@@ -125,7 +128,14 @@ async fn gather_link_info(dull: &DullChild, lm: LinkMessage) {
 
     let mut data = dull.data.lock().await;
 
+    println!("\ncommand {}", data.cmd_cnt);
     data.store_link_info(lm);
+    data.cmd_cnt += 1;
+    Command::new("ip")
+        .arg("link")
+        .arg("ls")
+        .status()
+        .expect("ls command failed to start");
 }
 
 
