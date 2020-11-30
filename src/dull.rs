@@ -33,7 +33,7 @@ use std::os::unix::net::UnixStream;
 use std::net::Ipv6Addr;
 use std::collections::HashMap;
 use std::process::Command;
-//use std::convert::TryFrom;
+use std::convert::TryInto;
 
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
@@ -173,10 +173,7 @@ impl DullData {
                     if addrset.len() != 16 {
                         continue;
                     }
-                    let mut addrbytes: [u8; 16] = [0; 16];
-                    for n in 0..15 {
-                        addrbytes[n] = addrset[n];
-                    }
+                    let addrbytes: [u8; 16] = addrset.try_into().unwrap();
                     ifn.linklocal6 = Ipv6Addr::from(addrbytes);
                 },
                 _ => {
