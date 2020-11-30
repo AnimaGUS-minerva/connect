@@ -33,19 +33,23 @@ use std::os::unix::net::UnixStream;
 use std::net::Ipv6Addr;
 use std::collections::HashMap;
 use std::process::Command;
+//use std::convert::TryFrom;
+
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
-use netlink_packet_route::link::nlas::Nla;
 use netlink_packet_route::link::nlas::AfSpecInet;
+use netlink_packet_route::link::nlas::State;
 use rtnetlink::{
-    constants::{RTMGRP_IPV4_ROUTE, RTMGRP_IPV6_ROUTE, RTMGRP_LINK},
+    constants::{RTMGRP_IPV6_ROUTE, RTMGRP_IPV6_IFADDR, RTMGRP_LINK},
+    Handle, Error,
     new_connection,
     sys::SocketAddr,
 };
 use netlink_packet_route::{
     NetlinkPayload::InnerMessage,
     RtnlMessage::NewLink,
-    LinkMessage,
+    RtnlMessage::NewAddress,
+    LinkMessage, AddressMessage
 };
 
 /*
@@ -74,13 +78,15 @@ impl Dull {
     }
 }
 
+type IfIndex = u32;
+
 #[derive(Debug, PartialEq)]
 pub struct DullInterface {
-    pub ifindex:       u32,
+    pub ifindex:       IfIndex,
     pub ifname:        String,
     pub mtu:           u32,
-    pub linklayer6:    Ipv6Addr,
-    pub oper_state:    bool,
+    pub linklocal6:    Ipv6Addr,
+    pub oper_state:    State,
 }
 
 pub struct DullData {
@@ -94,22 +100,26 @@ impl DullData {
         return DullData { interfaces: HashMap::new(), cmd_cnt: 0, debug_namespaces: false }
     }
 
-    pub fn store_link_info(self: &mut DullData, lm: LinkMessage) {
+    pub fn get_entry_by_ifindex(self: &mut DullData, ifindex: IfIndex) -> &mut DullInterface {
+        return self.interfaces.entry(ifindex).or_insert_with(|| { DullInterface {
+            ifindex: ifindex,
+            ifname:  "".to_string(),
+            mtu:     0,
+            linklocal6: Ipv6Addr::UNSPECIFIED,
+            oper_state: State::Down
+        }});
+    }
+
+    pub fn store_link_info(self: &mut DullData, lm: LinkMessage) -> &DullInterface {
 
         let lh = lm.header;
         let ifindex = lh.index;
         println!("ifindex: {:?} ", ifindex);
 
-        let ifn = self.interfaces.entry(ifindex).or_insert_with(|| { DullInterface {
-            ifindex: ifindex,
-            ifname:  "".to_string(),
-            mtu:     0,
-            linklayer6: Ipv6Addr::UNSPECIFIED,
-            oper_state: false
-        }});
-        //ifn.ifindex = ifindex;
+        let mut ifn = self.get_entry_by_ifindex(ifindex);
 
         for nlas in lm.nlas {
+            use netlink_packet_route::link::nlas::Nla;
             match nlas {
                 Nla::IfName(name) => {
                     println!("ifname: {}", name);
@@ -122,6 +132,12 @@ impl DullData {
                 Nla::Address(addrset) => {
                     println!("lladdr: {:0x}:{:0x}:{:0x}:{:0x}:{:0x}:{:0x}", addrset[0], addrset[1], addrset[2], addrset[3], addrset[4], addrset[5]);
                 },
+                Nla::OperState(state) => {
+                    if state == State::Up {
+                        println!("device is up");
+                    }
+                    ifn.oper_state = state;
+                },
                 Nla::AfSpecInet(inets) => {
                     for ip in inets {
                         match ip {
@@ -132,7 +148,6 @@ impl DullData {
                             _ => {}
                         }
                     }
-                    //ifn.mtu = bytes;
                 },
                 _ => {
                     //print!("data: {:?} ", nlas);
@@ -140,16 +155,59 @@ impl DullData {
             }
         }
         println!("");
+        return ifn;
     }
+
+    pub fn store_addr_info(self: &mut DullData, am: AddressMessage) -> &DullInterface {
+
+        let lh = am.header;
+        let ifindex = lh.index;
+        println!("ifindex: {} family: {}", ifindex, lh.family);
+
+        let ifn = self.get_entry_by_ifindex(ifindex);
+
+        for nlas in am.nlas {
+            use netlink_packet_route::address::Nla;
+            match nlas {
+                Nla::Address(addrset) => {
+                    if addrset.len() != 16 {
+                        continue;
+                    }
+                    let mut addrbytes: [u8; 16] = [0; 16];
+                    for n in 0..15 {
+                        addrbytes[n] = addrset[n];
+                    }
+                    ifn.linklocal6 = Ipv6Addr::from(addrbytes);
+                },
+                _ => {
+                    print!("data: {:?} ", nlas);
+                }
+            }
+        }
+        println!("");
+        return ifn;
+    }
+
 }
 
-async fn gather_link_info(dull: &DullChild, lm: LinkMessage) {
-
+async fn gather_link_info(dull: &DullChild, handle: &Handle, lm: LinkMessage) -> Result<(), Error> {
     let mut data = dull.data.lock().await;
 
-    println!("\ncommand {}", data.cmd_cnt);
-    data.store_link_info(lm);
     data.cmd_cnt += 1;
+    println!("\ncommand {}", data.cmd_cnt);
+
+    {
+        let ifn = data.store_link_info(lm);
+        if ifn.oper_state == State::Down {
+            println!("bringing interface {} up", ifn.ifname);
+            handle
+                .link()
+                .set(ifn.ifindex)
+                .up()
+                .execute()
+                .await?;
+        }
+    }
 
     if data.debug_namespaces {
         Command::new("ip")
@@ -158,6 +216,18 @@ async fn gather_link_info(dull: &DullChild, lm: LinkMessage) {
             .status()
             .expect("ls command failed to start");
     }
+
+    Ok(())
+}
+
+async fn gather_addr_info(dull: &DullChild, _handle: &Handle, am: AddressMessage) -> Result<(), Error> {
+    let mut data = dull.data.lock().await;
+
+    data.cmd_cnt += 1;
+    println!("\ncommand {}", data.cmd_cnt);
+    let _ifn = data.store_addr_info(am);
+
+    Ok(())
 }
 
 
@@ -177,10 +247,10 @@ async fn listen_network(childinfo: &Arc<DullChild>) -> Result<(), String> {
     /* process it all in the background */
     rt2.spawn(async move {               // moves child into spawn.
         // Open the netlink socket
-        let (mut connection, _, mut messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
+        let (mut connection, handle, mut messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
 
         // These flags specify what kinds of broadcast messages we want to listen for.
-        let mgroup_flags = RTMGRP_IPV4_ROUTE | RTMGRP_IPV6_ROUTE | RTMGRP_LINK;
+        let mgroup_flags = RTMGRP_IPV6_ROUTE | RTMGRP_IPV6_IFADDR | RTMGRP_LINK;
 
         // A netlink socket address is created with said flags.
         let addr = SocketAddr::new(0, mgroup_flags);
@@ -192,7 +262,10 @@ async fn listen_network(childinfo: &Arc<DullChild>) -> Result<(), String> {
             let payload = message.payload;
             match payload {
                 InnerMessage(NewLink(stuff)) => {
-                    gather_link_info(&child, stuff).await;
+                    gather_link_info(&child, &handle, stuff).await.unwrap();
+                }
+                InnerMessage(NewAddress(stuff)) => {
+                    gather_addr_info(&child, &handle, stuff).await.unwrap();
                 }
                 //_ => { println!("generic message type: {} skipped", payload.message_type()); }
                 _ => { println!("msg type: {:?}", payload); }
