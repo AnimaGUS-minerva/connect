@@ -111,13 +111,8 @@ impl DullData {
         }});
     }
 
-    pub fn store_link_info(self: &mut DullData, lm: LinkMessage) -> &DullInterface {
-
-        let lh = lm.header;
-        let ifindex = lh.index;
-        println!("ifindex: {:?} ", ifindex);
-
-        let mut ifn = self.get_entry_by_ifindex(ifindex);
+    pub async fn store_link_info(self: &mut DullData, lm: LinkMessage, ifindex: IfIndex) -> &mut DullInterface {
+        let ifn = self.get_entry_by_ifindex(ifindex);
 
         for nlas in lm.nlas {
             use netlink_packet_route::link::nlas::Nla;
@@ -159,7 +154,7 @@ impl DullData {
         return ifn;
     }
 
-    pub fn store_addr_info(self: &mut DullData, am: AddressMessage) -> &DullInterface {
+    pub async fn store_addr_info(self: &mut DullData, am: AddressMessage) -> &DullInterface {
 
         let lh = am.header;
         let ifindex = lh.index;
@@ -196,8 +191,11 @@ async fn gather_link_info(dull: &DullChild, handle: &Handle, lm: LinkMessage) ->
     data.cmd_cnt += 1;
     println!("\ncommand {}", data.cmd_cnt);
 
+    let ifindex = lm.header.index;
+    println!("ifindex: {:?} ", ifindex);
+
     {
-        let ifn = data.store_link_info(lm);
+        let ifn = data.store_link_info(lm, ifindex).await;
         if ifn.oper_state == State::Down {
             println!("bringing interface {} up", ifn.ifname);
             handle
@@ -225,7 +223,7 @@ async fn gather_addr_info(dull: &DullChild, _handle: &Handle, am: AddressMessage
 
     data.cmd_cnt += 1;
     println!("\ncommand {}", data.cmd_cnt);
-    let _ifn = data.store_addr_info(am);
+    let _ifn = data.store_addr_info(am).await;
 
     Ok(())
 }
