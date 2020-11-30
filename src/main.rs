@@ -124,8 +124,6 @@ fn main () -> Result<(), String> {
         .unwrap();
 
     let future = parent(&rt, dull);
-    println!("blocking in main");
-
     rt.handle().block_on(future).unwrap();
 
     return Ok(());

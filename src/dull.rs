@@ -143,8 +143,8 @@ impl DullData {
                     for ip in inets {
                         match ip {
                             AfSpecInet::Inet(_v4) => { },
-                            AfSpecInet::Inet6(v6) => {
-                                println!("v6: {:?}", v6);
+                            AfSpecInet::Inet6(_v6) => {
+                                //println!("v6: {:?}", v6);
                             }
                             _ => {}
                         }
@@ -177,6 +177,8 @@ impl DullData {
                     let addrbytes: [u8; 16] = addrset.try_into().unwrap();
                     ifn.linklocal6 = Ipv6Addr::from(addrbytes);
                 },
+                Nla::CacheInfo(_info) => { /* nothing */},
+                Nla::Flags(_info)     => { /* nothing */},
                 _ => {
                     print!("data: {:?} ", nlas);
                 }
@@ -352,12 +354,12 @@ async fn child_processing(childinfo: Arc<DullChild>, sock: UnixStream) {
 
 pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
 
-    println!("daemon start");
+    //println!("daemon start");
     // set up a pair of sockets, connected
     // let pair = tokio::net::UnixStream::pair().unwrap();
     let pair = UnixStream::pair().unwrap();
 
-    println!("daemon fork");
+    //println!("daemon fork");
     let result = unsafe{fork()}.expect("fork failed");
 
 
@@ -377,7 +379,7 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
             // close the parentfd in the child
             //pair.0.close().unwrap();
 
-            println!("Child redirected");
+            //println!("Child redirected");
 
             // Open a log
             let log = OpenOptions::new()
