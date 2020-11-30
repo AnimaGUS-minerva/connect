@@ -19,22 +19,24 @@ extern crate nix;
 extern crate tokio;
 
 use std::fs::OpenOptions;
-use std::fs::File;
+//use std::fs::File;
 use gag::Redirect;
 
 use std::sync::Arc;
 use crate::control;
 use nix::unistd::*;
-use nix::sched::{unshare,setns};
+use nix::sched::unshare;
+//use nix::sched::setns;
 use nix::sched::CloneFlags;
 use std::os::unix::net::UnixStream;
-use std::os::unix::io::AsRawFd;
+//use std::os::unix::io::AsRawFd;
 use std::net::Ipv6Addr;
 use std::collections::HashMap;
 use std::process::Command;
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
 use netlink_packet_route::link::nlas::Nla;
+use netlink_packet_route::link::nlas::AfSpecInet;
 use rtnetlink::{
     constants::{RTMGRP_IPV4_ROUTE, RTMGRP_IPV6_ROUTE, RTMGRP_LINK},
     new_connection,
@@ -83,12 +85,13 @@ pub struct DullInterface {
 
 pub struct DullData {
     pub interfaces:    HashMap<u32, DullInterface>,
-    pub cmd_cnt:       u32
+    pub cmd_cnt:       u32,
+    pub debug_namespaces:  bool
 }
 
 impl DullData {
     pub fn empty() -> DullData {
-        return DullData { interfaces: HashMap::new(), cmd_cnt: 0 }
+        return DullData { interfaces: HashMap::new(), cmd_cnt: 0, debug_namespaces: false }
     }
 
     pub fn store_link_info(self: &mut DullData, lm: LinkMessage) {
@@ -116,11 +119,27 @@ impl DullData {
                     println!("mtu: {}", bytes);
                     ifn.mtu = bytes;
                 },
+                Nla::Address(addrset) => {
+                    println!("lladdr: {:0x}:{:0x}:{:0x}:{:0x}:{:0x}:{:0x}", addrset[0], addrset[1], addrset[2], addrset[3], addrset[4], addrset[5]);
+                },
+                Nla::AfSpecInet(inets) => {
+                    for ip in inets {
+                        match ip {
+                            AfSpecInet::Inet(_v4) => { },
+                            AfSpecInet::Inet6(v6) => {
+                                println!("v6: {:?}", v6);
+                            }
+                            _ => {}
+                        }
+                    }
+                    //ifn.mtu = bytes;
+                },
                 _ => {
-                    //println!("extra data: {:?} ", nlas);
+                    //print!("data: {:?} ", nlas);
                 }
             }
         }
+        println!("");
     }
 }
 
@@ -131,11 +150,14 @@ async fn gather_link_info(dull: &DullChild, lm: LinkMessage) {
     println!("\ncommand {}", data.cmd_cnt);
     data.store_link_info(lm);
     data.cmd_cnt += 1;
-    Command::new("ip")
-        .arg("link")
-        .arg("ls")
-        .status()
-        .expect("ls command failed to start");
+
+    if data.debug_namespaces {
+        Command::new("ip")
+            .arg("link")
+            .arg("ls")
+            .status()
+            .expect("ls command failed to start");
+    }
 }
 
 
@@ -172,7 +194,8 @@ async fn listen_network(childinfo: &Arc<DullChild>) -> Result<(), String> {
                 InnerMessage(NewLink(stuff)) => {
                     gather_link_info(&child, stuff).await;
                 }
-                _ => { println!("generic message type: {} skipped", payload.message_type()); }
+                //_ => { println!("generic message type: {} skipped", payload.message_type()); }
+                _ => { println!("msg type: {:?}", payload); }
             }
         }
     });
