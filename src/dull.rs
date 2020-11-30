@@ -49,6 +49,7 @@ use netlink_packet_route::{
     NetlinkPayload::InnerMessage,
     RtnlMessage::NewLink,
     RtnlMessage::NewAddress,
+    RtnlMessage::NewRoute,
     LinkMessage, AddressMessage
 };
 
@@ -263,6 +264,9 @@ async fn listen_network(childinfo: &Arc<DullChild>) -> Result<(), String> {
                 }
                 InnerMessage(NewAddress(stuff)) => {
                     gather_addr_info(&child, &handle, stuff).await.unwrap();
+                }
+                InnerMessage(NewRoute(_thing)) => {
+                    /* just ignore these! */
                 }
                 //_ => { println!("generic message type: {} skipped", payload.message_type()); }
                 _ => { println!("msg type: {:?}", payload); }
