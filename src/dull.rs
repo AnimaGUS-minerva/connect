@@ -197,7 +197,7 @@ pub async fn process_control(_child: Arc<DullChild>, mut child_sock: tokio::net:
 }
 
 /* this calls unshare(2) to create a new network namespace */
-pub async fn create_netns(_child: &DullChild) -> Result<(), String> {
+pub fn create_netns() -> Result<(), String> {
 
     // we will want CLONE_FS at some point, having first changed to
     // a directory suitable for core dumps.
@@ -218,15 +218,27 @@ pub async fn create_netns(_child: &DullChild) -> Result<(), String> {
         .status()
         .expect("remount of /sys failed");
 
+    /*
+    Command::new("bash")
+        .status()
+        .expect("ls of /sys failed");
+     */
+
     Ok(())
 }
 
 async fn child_processing(childinfo: Arc<DullChild>, sock: UnixStream) {
     let mut parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
 
-    /* create a new network namespace */
-    println!("future0");
-    create_netns(&childinfo).await.unwrap();
+    /*  does not seem to work!
+    let monitor = File::create("monitor.txt").unwrap();
+    // into the background
+    Command::new("ip")
+        .arg("monitor")
+        .stdout(monitor)
+        .spawn()
+        .expect("ls command failed to start");
+     */
 
     /* arrange to listen on network events in the new network namespace */
     println!("future2");
@@ -289,7 +301,12 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
                 .unwrap();
             let _err_redirect = Redirect::stderr(log).unwrap();
 
-            println!("now in child");
+            /* create a new network namespace... BEFORE initializing runtime */
+            /* the runtime may call clone(2), which if not unshared() would  */
+            /* retain the parent network name space */
+            println!("In child: creating name space");
+            create_netns().unwrap();
+
             let rt = tokio::runtime::Builder::new()
                 .threaded_scheduler()
                 .enable_all()
