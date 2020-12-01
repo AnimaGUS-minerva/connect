@@ -18,17 +18,11 @@
 extern crate nix;
 extern crate tokio;
 
-//use nix::unistd::*;
-//use libc::AF_INET6;
-//use libc::in6_addr;
-
 use std::net::Ipv6Addr;
 use tokio::net::UdpSocket;
 use crate::dull::IfIndex;
 use crate::grasp::GRASP_PORT;
 use std::io::Error;
-//use nix::sys::socket::sockaddr_in6;
-//use std::net::SocketAddr;
 use std::net::SocketAddrV6;
 
 #[derive(Debug)]
@@ -42,14 +36,6 @@ impl GraspDaemon {
 
         let sin6 = SocketAddrV6::new(llv6, GRASP_PORT as u16, 0, ifindex);
 
-        /*
-        let std_sock = Socket::new(Domain::ipv6(),
-                                   Type::dgram(),
-                                   Some(Protocol::udp()))?.into_udp_socket();
-        // bind it.
-        std_sock.bind(sin6)?;
-         */
-
         let sock = UdpSocket::bind(sin6).await.unwrap();
 
         {
@@ -60,11 +46,7 @@ impl GraspDaemon {
             sock.join_multicast_v6(&GRASP_mcast, ifindex).unwrap();
         }
 
-        //let sock = UdpSocket::from_std(std_sock).unwrap();
-
         let gp = GraspDaemon { addr: llv6, socket: sock };
-
-        // socket needs to be bound to a multicast address.
 
         return Ok(gp)
     }
