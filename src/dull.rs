@@ -24,6 +24,8 @@ use gag::Redirect;
 
 use std::sync::Arc;
 use crate::control;
+use crate::dullgrasp;
+
 use nix::unistd::*;
 use nix::sched::unshare;
 //use nix::sched::setns;
@@ -79,15 +81,16 @@ impl Dull {
     }
 }
 
-type IfIndex = u32;
+pub type IfIndex = u32;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct DullInterface {
     pub ifindex:       IfIndex,
     pub ifname:        String,
     pub mtu:           u32,
     pub linklocal6:    Ipv6Addr,
     pub oper_state:    State,
+    pub grasp_daemon:  Option<dullgrasp::GraspDaemon>
 }
 
 pub struct DullData {
@@ -111,7 +114,8 @@ impl DullData {
             ifname:  "".to_string(),
             mtu:     0,
             linklocal6: Ipv6Addr::UNSPECIFIED,
-            oper_state: State::Down
+            oper_state: State::Down,
+            grasp_daemon: None
         }))});
 
         return ifnl;
@@ -194,6 +198,7 @@ impl DullData {
                     }
                     let addrbytes: [u8; 16] = addrset.try_into().unwrap();
                     ifn.linklocal6 = Ipv6Addr::from(addrbytes);
+                    print!("llv6: {}", ifn.linklocal6);
                 },
                 Nla::CacheInfo(_info) => { /* nothing */},
                 Nla::Flags(_info)     => { /* nothing */},
@@ -203,6 +208,11 @@ impl DullData {
             }
         }
         println!("");
+
+        /*
+        if ifn. {
+        }
+         */
     }
 
 }
