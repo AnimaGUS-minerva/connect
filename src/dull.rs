@@ -91,7 +91,7 @@ pub struct DullInterface {
 }
 
 pub struct DullData {
-    pub interfaces:    HashMap<u32, Mutex<DullInterface>>,
+    pub interfaces:    HashMap<u32, Arc<Mutex<DullInterface>>>,
     pub cmd_cnt:       u32,
     pub debug_namespaces:  bool,
     pub handle:        Option<Handle>
@@ -105,14 +105,14 @@ impl DullData {
         }
     }
 
-    pub async fn get_entry_by_ifindex(self: &mut DullData, ifindex: IfIndex) -> &Mutex<DullInterface> {
-        let ifnl = self.interfaces.entry(ifindex).or_insert_with(|| { Mutex::new(DullInterface {
+    pub async fn get_entry_by_ifindex(self: &mut DullData, ifindex: IfIndex) -> &Arc<Mutex<DullInterface>> {
+        let ifnl = self.interfaces.entry(ifindex).or_insert_with(|| { Arc::new(Mutex::new(DullInterface {
             ifindex: ifindex,
             ifname:  "".to_string(),
             mtu:     0,
             linklocal6: Ipv6Addr::UNSPECIFIED,
             oper_state: State::Down
-        })});
+        }))});
 
         return ifnl;
     }
