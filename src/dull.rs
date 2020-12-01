@@ -93,12 +93,16 @@ pub struct DullInterface {
 pub struct DullData {
     pub interfaces:    HashMap<u32, DullInterface>,
     pub cmd_cnt:       u32,
-    pub debug_namespaces:  bool
+    pub debug_namespaces:  bool,
+    pub handle:        Option<Handle>
 }
 
 impl DullData {
     pub fn empty() -> DullData {
-        return DullData { interfaces: HashMap::new(), cmd_cnt: 0, debug_namespaces: false }
+        return DullData { interfaces: HashMap::new(), cmd_cnt: 0,
+                          debug_namespaces: false,
+                          handle: None
+        }
     }
 
     pub fn get_entry_by_ifindex(self: &mut DullData, ifindex: IfIndex) -> &mut DullInterface {
@@ -111,7 +115,7 @@ impl DullData {
         }});
     }
 
-    pub async fn store_link_info(self: &mut DullData, lm: LinkMessage, ifindex: IfIndex) -> &mut DullInterface {
+    pub async fn store_link_info(self: &mut DullData, lm: LinkMessage, ifindex: IfIndex) {
         let ifn = self.get_entry_by_ifindex(ifindex);
 
         for nlas in lm.nlas {
@@ -151,10 +155,22 @@ impl DullData {
             }
         }
         println!("");
-        return ifn;
+        if ifn.oper_state == State::Down {
+            println!("bringing interface {} up", ifn.ifname);
+            let index  = ifn.ifindex;   // this copy avoids a borrow below.
+            let handle = self.handle.as_ref().unwrap();
+
+            handle
+                .link()
+                .set(index)
+                .up()
+                .execute()
+                .await.unwrap();
+        }
+        return ();
     }
 
-    pub async fn store_addr_info(self: &mut DullData, am: AddressMessage) -> &DullInterface {
+    pub async fn store_addr_info(self: &mut DullData, am: AddressMessage) {
 
         let lh = am.header;
         let ifindex = lh.index;
@@ -180,12 +196,11 @@ impl DullData {
             }
         }
         println!("");
-        return ifn;
     }
 
 }
 
-async fn gather_link_info(dull: &DullChild, handle: &Handle, lm: LinkMessage) -> Result<(), Error> {
+async fn gather_link_info(dull: &DullChild, lm: LinkMessage) -> Result<(), Error> {
     let mut data = dull.data.lock().await;
 
     data.cmd_cnt += 1;
@@ -194,18 +209,7 @@ async fn gather_link_info(dull: &DullChild, handle: &Handle, lm: LinkMessage) ->
     let ifindex = lm.header.index;
     println!("ifindex: {:?} ", ifindex);
 
-    {
-        let ifn = data.store_link_info(lm, ifindex).await;
-        if ifn.oper_state == State::Down {
-            println!("bringing interface {} up", ifn.ifname);
-            handle
-                .link()
-                .set(ifn.ifindex)
-                .up()
-                .execute()
-                .await?;
-        }
-    }
+    data.store_link_info(lm, ifindex).await;
 
     if data.debug_namespaces {
         Command::new("ip")
@@ -218,12 +222,12 @@ async fn gather_link_info(dull: &DullChild, handle: &Handle, lm: LinkMessage) ->
     Ok(())
 }
 
-async fn gather_addr_info(dull: &DullChild, _handle: &Handle, am: AddressMessage) -> Result<(), Error> {
+async fn gather_addr_info(dull: &DullChild, am: AddressMessage) -> Result<(), Error> {
     let mut data = dull.data.lock().await;
 
     data.cmd_cnt += 1;
     println!("\ncommand {}", data.cmd_cnt);
-    let _ifn = data.store_addr_info(am).await;
+    data.store_addr_info(am).await;
 
     Ok(())
 }
@@ -256,14 +260,19 @@ async fn listen_network(childinfo: &Arc<DullChild>) -> Result<(), String> {
         connection.socket_mut().bind(&addr).expect("failed to bind");
         rt.spawn(connection);
 
+        {
+            let mut data = child.data.lock().await;
+            data.handle  = Some(handle);
+        }
+
         while let Some((message, _)) = messages.next().await {
             let payload = message.payload;
             match payload {
                 InnerMessage(NewLink(stuff)) => {
-                    gather_link_info(&child, &handle, stuff).await.unwrap();
+                    gather_link_info(&child, stuff).await.unwrap();
                 }
                 InnerMessage(NewAddress(stuff)) => {
-                    gather_addr_info(&child, &handle, stuff).await.unwrap();
+                    gather_addr_info(&child, stuff).await.unwrap();
                 }
                 InnerMessage(NewRoute(_thing)) => {
                     /* just ignore these! */
