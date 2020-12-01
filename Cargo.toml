@@ -24,7 +24,6 @@ tokio-serde   = { version = "0.7.1",  features = ["cbor" ] }
 bytes         = "*"
 futures-sink  = "*"
 gag           = "*"
-net2          = "*"
 libc          = "*"
 
 [dev-dependencies]

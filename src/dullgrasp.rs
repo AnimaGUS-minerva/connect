@@ -18,11 +18,10 @@
 extern crate nix;
 extern crate tokio;
 
-use nix::unistd::*;
+//use nix::unistd::*;
 //use libc::AF_INET6;
 //use libc::in6_addr;
 
-use net2::UdpBuilder;
 use std::net::Ipv6Addr;
 use tokio::net::UdpSocket;
 use crate::dull::IfIndex;
@@ -39,14 +38,33 @@ pub struct GraspDaemon {
 }
 
 impl GraspDaemon {
-    pub fn initdaemon(llv6: Ipv6Addr, ifindex: IfIndex) -> Result<GraspDaemon, Error> {
+    pub async fn initdaemon(llv6: Ipv6Addr, ifindex: IfIndex) -> Result<GraspDaemon, Error> {
 
         let sin6 = SocketAddrV6::new(llv6, GRASP_PORT as u16, 0, ifindex);
 
-        let std_sock = UdpBuilder::new_v6().unwrap().bind(sin6)?;         // .reuse_address(true);
-        let sock = UdpSocket::from_std(std_sock).unwrap();
+        /*
+        let std_sock = Socket::new(Domain::ipv6(),
+                                   Type::dgram(),
+                                   Some(Protocol::udp()))?.into_udp_socket();
+        // bind it.
+        std_sock.bind(sin6)?;
+         */
+
+        let sock = UdpSocket::bind(sin6).await.unwrap();
+
+        {
+#[allow(non_snake_case)]
+            let GRASP_mcast = "FF02:0:0:0:0:0:0:13".parse::<Ipv6Addr>().unwrap();
+
+            // join it to a multicast group
+            sock.join_multicast_v6(&GRASP_mcast, ifindex).unwrap();
+        }
+
+        //let sock = UdpSocket::from_std(std_sock).unwrap();
 
         let gp = GraspDaemon { addr: llv6, socket: sock };
+
+        // socket needs to be bound to a multicast address.
 
         return Ok(gp)
     }
@@ -67,7 +85,7 @@ macro_rules! aw {
 async fn construct_grasp_daemon() -> Result<(), std::io::Error> {
     let val = "::1".parse::<Ipv6Addr>().unwrap();
 
-    let _gp = GraspDaemon::initdaemon(val, 0);
+    let _gp = GraspDaemon::initdaemon(val, 0).await;
     Ok(())
 }
 
