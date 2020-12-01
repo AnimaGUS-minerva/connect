@@ -91,7 +91,7 @@ pub struct DullInterface {
 }
 
 pub struct DullData {
-    pub interfaces:    HashMap<u32, DullInterface>,
+    pub interfaces:    HashMap<u32, Mutex<DullInterface>>,
     pub cmd_cnt:       u32,
     pub debug_namespaces:  bool,
     pub handle:        Option<Handle>
@@ -105,64 +105,71 @@ impl DullData {
         }
     }
 
-    pub fn get_entry_by_ifindex(self: &mut DullData, ifindex: IfIndex) -> &mut DullInterface {
-        return self.interfaces.entry(ifindex).or_insert_with(|| { DullInterface {
+    pub async fn get_entry_by_ifindex(self: &mut DullData, ifindex: IfIndex) -> &Mutex<DullInterface> {
+        let ifnl = self.interfaces.entry(ifindex).or_insert_with(|| { Mutex::new(DullInterface {
             ifindex: ifindex,
             ifname:  "".to_string(),
             mtu:     0,
             linklocal6: Ipv6Addr::UNSPECIFIED,
             oper_state: State::Down
-        }});
+        })});
+
+        return ifnl;
     }
 
     pub async fn store_link_info(self: &mut DullData, lm: LinkMessage, ifindex: IfIndex) {
-        let ifn = self.get_entry_by_ifindex(ifindex);
 
-        for nlas in lm.nlas {
-            use netlink_packet_route::link::nlas::Nla;
-            match nlas {
-                Nla::IfName(name) => {
-                    println!("ifname: {}", name);
-                    ifn.ifname = name;
-                },
-                Nla::Mtu(bytes) => {
-                    println!("mtu: {}", bytes);
-                    ifn.mtu = bytes;
-                },
-                Nla::Address(addrset) => {
-                    println!("lladdr: {:0x}:{:0x}:{:0x}:{:0x}:{:0x}:{:0x}", addrset[0], addrset[1], addrset[2], addrset[3], addrset[4], addrset[5]);
-                },
-                Nla::OperState(state) => {
-                    if state == State::Up {
-                        println!("device is up");
-                    }
-                    ifn.oper_state = state;
-                },
-                Nla::AfSpecInet(inets) => {
-                    for ip in inets {
-                        match ip {
-                            AfSpecInet::Inet(_v4) => { },
-                            AfSpecInet::Inet6(_v6) => {
-                                //println!("v6: {:?}", v6);
-                            }
-                            _ => {}
+        let results = {
+            let mut ifn = self.get_entry_by_ifindex(ifindex).await.lock().await;
+
+            for nlas in lm.nlas {
+                use netlink_packet_route::link::nlas::Nla;
+                match nlas {
+                    Nla::IfName(name) => {
+                        println!("ifname: {}", name);
+                        ifn.ifname = name;
+                    },
+                    Nla::Mtu(bytes) => {
+                        println!("mtu: {}", bytes);
+                        ifn.mtu = bytes;
+                    },
+                    Nla::Address(addrset) => {
+                        println!("lladdr: {:0x}:{:0x}:{:0x}:{:0x}:{:0x}:{:0x}", addrset[0], addrset[1], addrset[2], addrset[3], addrset[4], addrset[5]);
+                    },
+                    Nla::OperState(state) => {
+                        if state == State::Up {
+                            println!("device is up");
                         }
+                        ifn.oper_state = state;
+                    },
+                    Nla::AfSpecInet(inets) => {
+                        for ip in inets {
+                            match ip {
+                                AfSpecInet::Inet(_v4) => { },
+                                AfSpecInet::Inet6(_v6) => {
+                                    //println!("v6: {:?}", v6);
+                                }
+                                _ => {}
+                            }
+                        }
+                    },
+                    _ => {
+                        //print!("data: {:?} ", nlas);
                     }
-                },
-                _ => {
-                    //print!("data: {:?} ", nlas);
                 }
             }
-        }
-        println!("");
-        if ifn.oper_state == State::Down {
-            println!("bringing interface {} up", ifn.ifname);
-            let index  = ifn.ifindex;   // this copy avoids a borrow below.
+            println!("");
+            (ifn.oper_state == State::Down, ifn.ifindex.clone(), ifn.ifname.clone())
+        };
+
+        if results.0 {
+            println!("bringing interface {} up", results.2);
+
             let handle = self.handle.as_ref().unwrap();
 
             handle
                 .link()
-                .set(index)
+                .set(results.1)
                 .up()
                 .execute()
                 .await.unwrap();
@@ -176,7 +183,7 @@ impl DullData {
         let ifindex = lh.index;
         println!("ifindex: {} family: {}", ifindex, lh.family);
 
-        let ifn = self.get_entry_by_ifindex(ifindex);
+        let mut ifn = self.get_entry_by_ifindex(ifindex).await.lock().await;
 
         for nlas in am.nlas {
             use netlink_packet_route::address::Nla;
@@ -420,7 +427,7 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
                 .unwrap();
 
             let childinfo = DullChild { runtime:        Arc::new(rt),
-                                        data:           Mutex::new(DullData::empty())
+                                        data:           Mutex::new(DullData::empty()),
             };
 
             let art = childinfo.runtime.clone();
