@@ -25,6 +25,7 @@ use gag::Redirect;
 use std::sync::Arc;
 use crate::control;
 use crate::dullgrasp;
+use crate::dullgrasp::GraspDaemon;
 
 use nix::unistd::*;
 use nix::sched::unshare;
@@ -90,7 +91,7 @@ pub struct DullInterface {
     pub mtu:           u32,
     pub linklocal6:    Ipv6Addr,
     pub oper_state:    State,
-    pub grasp_daemon:  Option<dullgrasp::GraspDaemon>
+    pub grasp_daemon:  Option<Arc<Mutex<dullgrasp::GraspDaemon>>>
 }
 
 pub struct DullData {
@@ -124,7 +125,8 @@ impl DullData {
     pub async fn store_link_info(self: &mut DullData, lm: LinkMessage, ifindex: IfIndex) {
 
         let results = {
-            let mut ifn = self.get_entry_by_ifindex(ifindex).await.lock().await;
+            let     ifna = self.get_entry_by_ifindex(ifindex).await;
+            let mut ifn  = ifna.lock().await;
 
             for nlas in lm.nlas {
                 use netlink_packet_route::link::nlas::Nla;
@@ -181,13 +183,14 @@ impl DullData {
         return ();
     }
 
-    pub async fn store_addr_info(self: &mut DullData, am: AddressMessage) {
+    pub async fn store_addr_info(self: &mut DullData, am: AddressMessage) -> Option<Arc<Mutex<DullInterface>>> {
 
         let lh = am.header;
         let ifindex = lh.index;
         println!("ifindex: {} family: {}", ifindex, lh.family);
 
-        let mut ifn = self.get_entry_by_ifindex(ifindex).await.lock().await;
+        let     ifna = self.get_entry_by_ifindex(ifindex).await;
+        let mut ifn  = ifna.lock().await;
 
         for nlas in am.nlas {
             use netlink_packet_route::address::Nla;
@@ -209,10 +212,13 @@ impl DullData {
         }
         println!("");
 
-        /*
-        if ifn. {
+        if ifn.oper_state == State::Up {
+            match ifn.grasp_daemon {
+                None => { return Some(ifna.clone()); }
+                _    => { return None; }
+            }
         }
-         */
+        return None;
     }
 
 }
@@ -239,14 +245,12 @@ async fn gather_link_info(dull: &DullChild, lm: LinkMessage) -> Result<(), Error
     Ok(())
 }
 
-async fn gather_addr_info(dull: &DullChild, am: AddressMessage) -> Result<(), Error> {
+async fn gather_addr_info(dull: &DullChild, am: AddressMessage) -> Result<Option<Arc<Mutex<DullInterface>>>, Error> {
     let mut data = dull.data.lock().await;
 
     data.cmd_cnt += 1;
     println!("\ncommand {}", data.cmd_cnt);
-    data.store_addr_info(am).await;
-
-    Ok(())
+    Ok(data.store_addr_info(am).await)
 }
 
 
@@ -263,8 +267,8 @@ async fn listen_network(childinfo: &Arc<DullChild>) -> Result<(), String> {
     let rt = child.runtime.clone();
     let rt2 = child.runtime.clone();
 
-    /* process it all in the background */
-    rt2.spawn(async move {               // moves child into spawn.
+    /* NETLINK listen_network activity daemon: process it all in the background */
+    rt2.spawn(async move {               // moves _child_, and _rt_ into spawn.
         // Open the netlink socket
         let (mut connection, handle, mut messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
 
@@ -289,7 +293,19 @@ async fn listen_network(childinfo: &Arc<DullChild>) -> Result<(), String> {
                     gather_link_info(&child, stuff).await.unwrap();
                 }
                 InnerMessage(NewAddress(stuff)) => {
-                    gather_addr_info(&child, stuff).await.unwrap();
+                    let sifn = gather_addr_info(&child, stuff).await.unwrap();
+
+                    if let Some(lifn) = sifn {
+                        let mut ifn = lifn.lock().await;
+                        let gd = Arc::new(Mutex::new(GraspDaemon::initdaemon(ifn.linklocal6, ifn.ifindex).await.unwrap()));
+                        ifn.grasp_daemon = Some(gd.clone());
+
+                        /*
+                        rt.spawn(async move {
+                            GraspDaemon::read_loop(gd, child.clone());
+                        })
+                         */
+                    }
                 }
                 InnerMessage(NewRoute(_thing)) => {
                     /* just ignore these! */

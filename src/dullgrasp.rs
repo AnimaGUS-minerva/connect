@@ -20,15 +20,18 @@ extern crate tokio;
 
 use std::net::Ipv6Addr;
 use tokio::net::UdpSocket;
-use crate::dull::IfIndex;
-use crate::grasp::GRASP_PORT;
 use std::io::Error;
 use std::net::SocketAddrV6;
+use std::sync::Arc;
+use futures::lock::Mutex;
+
+use crate::dull::{IfIndex,DullChild};
+use crate::grasp::GRASP_PORT;
 
 #[derive(Debug)]
 pub struct GraspDaemon {
     pub addr:    Ipv6Addr,
-    pub socket:  tokio::net::UdpSocket
+    pub socket:  Arc<tokio::net::UdpSocket>
 }
 
 impl GraspDaemon {
@@ -38,17 +41,22 @@ impl GraspDaemon {
 
         let sock = UdpSocket::bind(sin6).await.unwrap();
 
-        {
-#[allow(non_snake_case)]
-            let GRASP_mcast = "FF02:0:0:0:0:0:0:13".parse::<Ipv6Addr>().unwrap();
+        // join it to a multicast group
+        let grasp_mcast = "FF02:0:0:0:0:0:0:13".parse::<Ipv6Addr>().unwrap();
+        sock.join_multicast_v6(&grasp_mcast, ifindex).unwrap();
 
-            // join it to a multicast group
-            sock.join_multicast_v6(&GRASP_mcast, ifindex).unwrap();
-        }
-
-        let gp = GraspDaemon { addr: llv6, socket: sock };
+        let gp = GraspDaemon { addr: llv6, socket: Arc::new(sock) };
 
         return Ok(gp)
+    }
+
+    pub async fn read_loop(_gd: Arc<Mutex<GraspDaemon>>,
+                           dd: Arc<Mutex<DullChild>>) {
+
+        let _runtime = dd.lock().await.runtime.clone();
+        loop {
+            println!("loop in grasp daemon");
+        }
     }
 
 }
