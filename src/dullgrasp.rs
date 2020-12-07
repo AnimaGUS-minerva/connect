@@ -18,6 +18,7 @@
 extern crate nix;
 extern crate tokio;
 
+use nix::unistd::*;
 use std::net::Ipv6Addr;
 use tokio::net::UdpSocket;
 use std::io::Error;
@@ -54,9 +55,23 @@ impl GraspDaemon {
                            dd: Arc<Mutex<DullChild>>) {
 
         let _runtime = dd.lock().await.runtime.clone();
+        let mut cnt = 0;
         loop {
-            println!("loop in grasp daemon");
+            println!("loop in grasp daemon: {}", cnt);
+            cnt+=1;
+            sleep(5);
         }
+    }
+
+    pub async fn start_loop(gd: Arc<Mutex<GraspDaemon>>,
+                            dd: Arc<Mutex<DullChild>>) {
+
+        let child3  = dd.clone();
+        let runtime = dd.lock().await.runtime.clone();
+
+        runtime.spawn(async move {
+            GraspDaemon::read_loop(gd, child3).await;
+        });
     }
 
 }

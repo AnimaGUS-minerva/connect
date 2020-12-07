@@ -223,7 +223,8 @@ impl DullData {
 
 }
 
-async fn gather_link_info(dull: &DullChild, lm: LinkMessage) -> Result<(), Error> {
+async fn gather_link_info(ldull: &Arc<Mutex<DullChild>>, lm: LinkMessage) -> Result<(), Error> {
+    let dull     = ldull.lock().await;
     let mut data = dull.data.lock().await;
 
     data.cmd_cnt += 1;
@@ -245,7 +246,8 @@ async fn gather_link_info(dull: &DullChild, lm: LinkMessage) -> Result<(), Error
     Ok(())
 }
 
-async fn gather_addr_info(dull: &DullChild, am: AddressMessage) -> Result<Option<Arc<Mutex<DullInterface>>>, Error> {
+async fn gather_addr_info(ldull: &Arc<Mutex<DullChild>>, am: AddressMessage) -> Result<Option<Arc<Mutex<DullInterface>>>, Error> {
+    let dull     = ldull.lock().await;
     let mut data = dull.data.lock().await;
 
     data.cmd_cnt += 1;
@@ -261,11 +263,13 @@ pub struct DullChild {
 }
 
 
-async fn listen_network(childinfo: &Arc<DullChild>) -> Result<(), String> {
+async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<(), String> {
 
     let child = childinfo.clone();   /* take reference to childinfo, for move below */
-    let rt = child.runtime.clone();
-    let rt2 = child.runtime.clone();
+    let (rt,rt2) = {
+        let locked = child.lock().await;
+        (locked.runtime.clone(), locked.runtime.clone())
+    };
 
     /* NETLINK listen_network activity daemon: process it all in the background */
     rt2.spawn(async move {               // moves _child_, and _rt_ into spawn.
@@ -282,7 +286,8 @@ async fn listen_network(childinfo: &Arc<DullChild>) -> Result<(), String> {
         rt.spawn(connection);
 
         {
-            let mut data = child.data.lock().await;
+            let  mychild = child.lock().await;
+            let mut data = mychild.data.lock().await;
             data.handle  = Some(handle);
         }
 
@@ -300,11 +305,7 @@ async fn listen_network(childinfo: &Arc<DullChild>) -> Result<(), String> {
                         let gd = Arc::new(Mutex::new(GraspDaemon::initdaemon(ifn.linklocal6, ifn.ifindex).await.unwrap()));
                         ifn.grasp_daemon = Some(gd.clone());
 
-                        /*
-                        rt.spawn(async move {
-                            GraspDaemon::read_loop(gd, child.clone());
-                        })
-                         */
+                        GraspDaemon::start_loop(gd, child.clone()).await;
                     }
                 }
                 InnerMessage(NewRoute(_thing)) => {
@@ -318,7 +319,7 @@ async fn listen_network(childinfo: &Arc<DullChild>) -> Result<(), String> {
     Ok(())
 }
 
-pub async fn process_control(_child: Arc<DullChild>, mut child_sock: tokio::net::UnixStream) {
+pub async fn process_control(_child: Arc<Mutex<DullChild>>, mut child_sock: tokio::net::UnixStream) {
     loop {
         if let Ok(thing) = control::read_control(&mut child_sock).await {
             match thing {
@@ -366,7 +367,7 @@ pub fn create_netns() -> Result<(), String> {
     Ok(())
 }
 
-async fn child_processing(childinfo: Arc<DullChild>, sock: UnixStream) {
+async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream) {
     let mut parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
 
     /*  does not seem to work!
@@ -457,7 +458,7 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
             };
 
             let art = childinfo.runtime.clone();
-            let child = Arc::new(childinfo);
+            let child = Arc::new(Mutex::new(childinfo));
 
             let future1 = child_processing(child, pair.1);
             art.handle().block_on(future1);
