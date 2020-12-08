@@ -18,7 +18,7 @@
 extern crate nix;
 extern crate tokio;
 
-use nix::unistd::*;
+//use nix::unistd::*;
 use std::net::Ipv6Addr;
 use tokio::net::UdpSocket;
 use std::io::Error;
@@ -32,13 +32,16 @@ use crate::grasp::GRASP_PORT;
 #[derive(Debug)]
 pub struct GraspDaemon {
     pub addr:    Ipv6Addr,
-    pub socket:  Arc<tokio::net::UdpSocket>
+    pub recv_socket:  tokio::net::udp::RecvHalf,
+    pub send_socket:  tokio::net::udp::SendHalf
 }
 
 impl GraspDaemon {
     pub async fn initdaemon(llv6: Ipv6Addr, ifindex: IfIndex) -> Result<GraspDaemon, Error> {
 
-        let sin6 = SocketAddrV6::new(llv6, GRASP_PORT as u16, 0, ifindex);
+        //let sin6 = SocketAddrV6::new(llv6, GRASP_PORT as u16, 0, ifindex);
+        let sin6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED,
+                                     GRASP_PORT as u16, 0, ifindex);
 
         let sock = UdpSocket::bind(sin6).await.unwrap();
 
@@ -46,20 +49,39 @@ impl GraspDaemon {
         let grasp_mcast = "FF02:0:0:0:0:0:0:13".parse::<Ipv6Addr>().unwrap();
         sock.join_multicast_v6(&grasp_mcast, ifindex).unwrap();
 
-        let gp = GraspDaemon { addr: llv6, socket: Arc::new(sock) };
+        let (recv, send) = sock.split();
+
+        let gp = GraspDaemon { addr: llv6,
+                               recv_socket: recv,
+                               send_socket: send
+        };
 
         return Ok(gp)
     }
 
-    pub async fn read_loop(_gd: Arc<Mutex<GraspDaemon>>,
+    pub async fn read_loop(gd: Arc<Mutex<GraspDaemon>>,
                            dd: Arc<Mutex<DullChild>>) {
 
         let _runtime = dd.lock().await.runtime.clone();
+        let gdd = gd.clone();
         let mut cnt = 0;
         loop {
-            println!("loop in grasp daemon: {}", cnt);
+            let mut bufbytes = [0u8; 2048];
+
+            let results = {
+                let mut gdl = gdd.lock().await;
+                gdl.recv_socket.recv_from(&mut bufbytes).await
+            };
+            match results {
+                Ok((size, addr)) => {
+                    println!("{}: grasp daemon read: {} bytes from {}",
+                             cnt, size, addr);
+                }
+                Err(msg) => {
+                    println!("got error: {:?}", msg);
+                }
+            }
             cnt+=1;
-            sleep(5);
         }
     }
 
