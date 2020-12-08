@@ -100,6 +100,7 @@ impl GraspDaemon {
 
 #[allow(unused_imports)]
 use crate::error::ConnectError;
+use crate::graspsamples;
 
 #[allow(unused_macros)]
 macro_rules! aw {
@@ -120,4 +121,10 @@ async fn construct_grasp_daemon() -> Result<(), std::io::Error> {
 #[test]
 fn test_construct_grasp_daemon() {
     assert_eq!(aw!(construct_grasp_daemon()).unwrap(), ());
+}
+
+#[test]
+fn test_parse_grasp_01() {
+    let s001 = &graspsamples::PACKET_000;
+    assert_eq!(s001[143], 0x50);
 }

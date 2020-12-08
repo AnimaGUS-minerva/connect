@@ -26,6 +26,7 @@ pub mod control;
 pub mod dullgrasp;
 pub mod grasp;
 pub mod error;
+pub mod graspsamples;
 
 static VERSION: &str = "1.0.0";
 // static mut ARGC: isize = 0 as isize;
