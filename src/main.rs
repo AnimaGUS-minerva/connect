@@ -14,7 +14,7 @@
    limitations under the License.
  *
  */
-
+#[macro_use] extern crate enum_primitive;
 use nix::unistd::*;
 use futures::stream::TryStreamExt;
 use rtnetlink::{new_connection, Error, Handle};

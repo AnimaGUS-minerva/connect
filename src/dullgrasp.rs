@@ -17,6 +17,7 @@
 
 extern crate nix;
 extern crate tokio;
+extern crate moz_cbor as cbor;
 
 //use nix::unistd::*;
 use std::net::Ipv6Addr;

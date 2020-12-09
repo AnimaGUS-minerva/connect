@@ -14,8 +14,34 @@
    limitations under the License.
  *
  */
-
 extern crate nix;
 extern crate tokio;
+extern crate num;
+
+use num::FromPrimitive;
 
 pub const GRASP_PORT: u32 = 7017;
+
+enum_from_primitive! {
+    #[allow(non_camel_case_types)]
+    #[derive(Debug, PartialEq)]
+    pub enum MESSAGE_TYPE {
+        M_NOOP = 0,
+        M_DISCOVERY = 1,
+        M_RESPONSE = 2,
+        M_REQ_NEG = 3,
+        M_REQ_SYN = 4,
+        M_NEGOTIATE = 5,
+        M_END = 6,
+        M_WAIT = 7,
+        M_SYNCH = 8,
+        M_FLOOD = 9,
+        M_INVALID = 99
+    }
+}
+
+#[test]
+fn test_grasp_message_type() {
+    assert_eq!(MESSAGE_TYPE::from_i32(9), Some(MESSAGE_TYPE::M_FLOOD));
+}
+
