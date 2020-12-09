@@ -15,30 +15,12 @@
  *
  */
 
-extern crate nix;
-extern crate tokio;
-use std::fmt::Formatter;
-use std::fmt::Error;
+extern crate custom_error;
+use custom_error::custom_error;
 
-#[derive(Debug,Clone)]
-pub enum ConnectError {
-    NotIpV6Address,
-}
-
-fn fmt_connect_error(err: &ConnectError) -> &str {
-    match err {
-        ConnectError::NotIpV6Address => "Not an IPv6 Address"
-    }
-}
-
-impl std::error::Error for ConnectError {
-    fn description(&self) -> &str {
-        fmt_connect_error(&self)
-    }
-}
-impl std::fmt::Display for ConnectError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{}", fmt_connect_error(&self))
-    }
+// Note the use of braces rather than parentheses.
+custom_error!{pub ConnectError
+    NotIpV6Address   = "Not an IPv6 Address",
+    MisformedGraspMessage = "Misformed GRASP message received"
 }
 
