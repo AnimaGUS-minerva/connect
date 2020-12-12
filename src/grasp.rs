@@ -16,32 +16,343 @@
  */
 extern crate nix;
 extern crate tokio;
-extern crate num;
-
-use num::FromPrimitive;
+extern crate moz_cbor as cbor;
+use std::net::Ipv6Addr;
+use std::net::Ipv4Addr;
+use crate::error::ConnectError;
+use cbor::CborType;
 
 pub const GRASP_PORT: u32 = 7017;
 
-enum_from_primitive! {
-    #[allow(non_camel_case_types)]
-    #[derive(Debug, PartialEq)]
-    pub enum MESSAGE_TYPE {
-        M_NOOP = 0,
-        M_DISCOVERY = 1,
-        M_RESPONSE = 2,
-        M_REQ_NEG = 3,
-        M_REQ_SYN = 4,
-        M_NEGOTIATE = 5,
-        M_END = 6,
-        M_WAIT = 7,
-        M_SYNCH = 8,
-        M_FLOOD = 9,
-        M_INVALID = 99
+type SessionID  = u32;
+type Ttl        = u32;  /* miliseconds */
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, PartialEq)]
+pub enum MESSAGE_TYPE_num {
+    M_NOOP = 0,
+    M_DISCOVERY = 1,
+    M_RESPONSE = 2,
+    M_REQ_NEG = 3,
+    M_REQ_SYN = 4,
+    M_NEGOTIATE = 5,
+    M_END = 6,
+    M_WAIT = 7,
+    M_SYNCH = 8,
+    M_FLOOD  = 9,
+    M_INVALID = 99
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, PartialEq)]
+enum GraspLocator {
+    #[allow(dead_code)]
+    O_IPv6_LOCATOR { v6addr: Ipv6Addr, transport_proto: u16, port_number: u16},  /* 103 */
+    #[allow(dead_code)]
+    O_IPv4_LOCATOR { v4addr: Ipv4Addr, transport_proto: u16, port_number: u16},  /* 104 */
+    #[allow(dead_code)]
+    O_FQDN_LOCATOR { fqdn: String, transport_proto: u16, port_number: u16 },     /* 105 */
+    #[allow(dead_code)]
+    O_URI_LOCATOR  { uri: String, transport_proto: u16, port_number: u16 }       /* 106 */
+}
+
+#[derive(Debug, PartialEq)]
+pub struct GraspObjective {
+    objective_name: String,
+    objective_flags: u32,
+    loop_count: u8,
+    objective_value: Option<String>,
+    locator: Option<GraspLocator>
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, PartialEq)]
+pub enum GraspMessage {
+    M_NOOP,
+    M_DISCOVERY,
+    M_RESPONSE,
+    M_REQ_NEG,
+    M_REQ_SYN,
+    M_NEGOTIATE,
+    M_END,
+    M_WAIT,
+    M_SYNCH,
+    M_FLOOD { session_id: SessionID, initiator: Ipv6Addr, ttl: Ttl, objectives: Vec<GraspObjective> },
+}
+
+fn decode_ipv6_bytes(bytes: &Vec<u8>) -> Result<Ipv6Addr, ConnectError> {
+    if bytes.len() == 16 {
+        let mut addrbytes = [0u8; 16];
+        for b in 0..16 {
+            addrbytes[b] = bytes[b];
+        }
+        Ok(Ipv6Addr::from(addrbytes))
+    } else {
+        return Err(ConnectError::MisformedIpv6Addr);
     }
 }
 
-#[test]
-fn test_grasp_message_type() {
-    assert_eq!(MESSAGE_TYPE::from_i32(9), Some(MESSAGE_TYPE::M_FLOOD));
+fn decode_ipv6_cbytes(cbytes: &CborType) -> Result<Ipv6Addr, ConnectError> {
+    match cbytes {
+        CborType::Bytes(bytes) => decode_ipv6_bytes(&bytes),
+        _ => Err(ConnectError::MisformedIpv6Addr)
+    }
 }
 
+fn grasp_parse_ipv4_locator(_array: &Vec<CborType>) -> Result<Option<GraspLocator>, ConnectError>
+{
+    return Err(ConnectError::UnimplementedGraspStuff);
+}
+
+fn grasp_parse_fqdn_locator(_array: &Vec<CborType>) -> Result<Option<GraspLocator>, ConnectError>
+{
+    return Err(ConnectError::UnimplementedGraspStuff);
+}
+
+fn grasp_parse_uri_locator(_array: &Vec<CborType>) -> Result<Option<GraspLocator>, ConnectError>
+{
+    return Err(ConnectError::UnimplementedGraspStuff);
+}
+
+fn grasp_parse_ipv6_locator(array: &Vec<CborType>) -> Result<Option<GraspLocator>, ConnectError>
+{
+    /* draft-ietf-anima-grasp-15:
+     * locator-option /= [O_IPv6_LOCATOR, ipv6-address,
+     *        transport-proto, port-number]
+     * ipv6-address = bytes .size 16
+     */
+
+    if array.len() < 4 {
+        return Err(ConnectError::MisformedGraspObjective);
+    }
+    let _v6addrbytes = decode_ipv6_cbytes(&array[1])?;
+    Err(ConnectError::MisformedGraspObjective)
+}
+
+fn grasp_parse_locator(ctlocator: &CborType) -> Result<Option<GraspLocator>, ConnectError>
+{
+    /* if it is not an array, then return None */
+    let ctarray = match ctlocator {
+        CborType::Array(obj) => obj,
+        _ => return Ok(None)
+    };
+
+    match ctarray[0] {
+        CborType::Integer(103) => grasp_parse_ipv6_locator(ctarray),
+        CborType::Integer(104) => grasp_parse_ipv4_locator(ctarray),
+        CborType::Integer(105) => grasp_parse_fqdn_locator(ctarray),
+        CborType::Integer(106) => grasp_parse_uri_locator(ctarray),
+        _ => return Err(ConnectError::MisformedGraspObjective)
+    }
+}
+
+fn grasp_parse_objective(ctobjpair: &Vec<CborType>) -> Result<GraspObjective, ConnectError>
+{
+    match &ctobjpair[0] {
+        CborType::Array(obj) => {
+            println!("name: {:?} size: {}", obj[0], obj.len());
+
+            let name = match &obj[0] {
+                CborType::String(name)    => name,
+                _ => return Err(ConnectError::MisformedGraspObjective)
+            };
+
+            let flags = match &obj[1] {
+                CborType::Integer(flags)  => flags,
+                _ => return Err(ConnectError::MisformedGraspObjective)
+            };
+
+            let loopcnt = match &obj[2] {
+                CborType::Integer(loopcnt) => loopcnt,
+                _ => return Err(ConnectError::MisformedGraspObjective)
+            };
+
+            let locator = grasp_parse_locator(&ctobjpair[1])?;
+            let value = if obj.len() >= 3 {
+                match &obj[3] {
+                    CborType::String(strvalue)=> Some(strvalue.clone()),
+                    _ => None
+                }
+            } else {
+                None
+            };
+
+            /* now look for a locator */
+            Ok(GraspObjective { objective_name: name.to_string(),
+                                objective_flags: (flags & 0xffffffff) as u32,
+                                loop_count: (loopcnt & 0xff) as u8,
+                                objective_value: value,
+                                locator: locator
+            })
+        }
+        _ => return Err(ConnectError::MisformedGraspObjective)
+    }
+}
+
+fn decode_base_grasp(contents: &Vec<CborType>) -> Result<(u32, u32), ConnectError> {
+    let msgtype = match contents[0] {
+        CborType::Integer(num) => num as u32,
+        _ => return Err(ConnectError::MisformedGraspMessage)
+    };
+    let session_id = match contents[1] {
+        CborType::Integer(id) => id as u32,
+        _ => return Err(ConnectError::MisformedGraspMessage)
+    };
+    Ok((msgtype, session_id))
+}
+
+impl GraspMessage {
+    fn decode_grasp_noop(_session_id: SessionID, _contents: &Vec<CborType>) -> Result<GraspMessage, ConnectError> {
+        Ok(GraspMessage::M_NOOP)
+    }
+
+    fn decode_grasp_discovery(_session_id: SessionID, _contents: &Vec<CborType>) -> Result<GraspMessage, ConnectError> {
+        Err(ConnectError::MisformedGraspMessage)
+    }
+
+    fn decode_grasp_response(_session_id: SessionID, _contents: &Vec<CborType>) -> Result<GraspMessage, ConnectError> {
+        Err(ConnectError::MisformedGraspMessage)
+    }
+
+    fn decode_grasp_req_neg(_session_id: SessionID, _contents: &Vec<CborType>) -> Result<GraspMessage, ConnectError> {
+        Err(ConnectError::MisformedGraspMessage)
+    }
+
+    fn decode_grasp_req_syn(_session_id: SessionID, _contents: &Vec<CborType>) -> Result<GraspMessage, ConnectError> {
+        Err(ConnectError::MisformedGraspMessage)
+    }
+
+    fn decode_grasp_negotiate(_session_id: SessionID, _contents: &Vec<CborType>) -> Result<GraspMessage, ConnectError> {
+        Err(ConnectError::MisformedGraspMessage)
+    }
+
+    fn decode_grasp_end(_session_id: SessionID, _contents: &Vec<CborType>) -> Result<GraspMessage, ConnectError> {
+        Err(ConnectError::MisformedGraspMessage)
+    }
+
+    fn decode_grasp_wait(_session_id: SessionID, _contents: &Vec<CborType>) -> Result<GraspMessage, ConnectError> {
+        Err(ConnectError::MisformedGraspMessage)
+    }
+
+    fn decode_grasp_synch(_session_id: SessionID, _contents: &Vec<CborType>) -> Result<GraspMessage, ConnectError> {
+        Err(ConnectError::MisformedGraspMessage)
+    }
+
+    fn decode_grasp_flood(session_id: SessionID, contents: &Vec<CborType>) -> Result<GraspMessage, ConnectError> {
+        let initiator = match &contents[2] {
+            CborType::Bytes(bytes) => {
+                decode_ipv6_bytes(bytes)?
+            },
+            _ => return Err(ConnectError::MisformedGraspMessage)
+        };
+
+        let ttl = match contents[3] {
+            CborType::Integer(num) => num,
+            _ => return Err(ConnectError::MisformedGraspMessage)
+        };
+
+        let objectives = match &contents[4] {
+            CborType::Array(stuff) => {
+                println!("objectives: {:?}", stuff);
+                let mut object_vec = Vec::<GraspObjective>::new();
+
+                let mut objerror = None;
+
+                for ctobjpair in stuff.iter() {
+                    let objective = match ctobjpair {
+                        CborType::Array(objective) => objective,
+                        _ => {
+                            objerror = Some(Err(ConnectError::MisformedGraspObjective));
+                            continue;
+                        }
+                    };
+
+                    if objective.len() <= 2 {
+                        objerror = Some(Err(ConnectError::MisformedGraspObjective));
+                        continue;
+                    }
+                    let mobj = grasp_parse_objective(objective);
+
+                    if let Ok(obj) = mobj {
+                        object_vec.push(obj);
+                    } else {
+                        objerror = Some(mobj);
+                        continue;
+                    }
+                }
+                // if no objectives, and saw an error, then return it.
+                if object_vec.len() == 0 {
+                    match objerror {
+                        None => {},
+                        _ => return Err(ConnectError::MisformedGraspMessage),
+                    }
+                }
+
+                /* otherwise, return vector of objectives, even if empty. */
+                object_vec
+            }
+            _ => return Err(ConnectError::MisformedGraspMessage)
+        };
+
+        Ok(GraspMessage::M_FLOOD { session_id: session_id,
+                                   initiator: initiator,
+                                   ttl: (ttl & 0xffffffff) as u32,
+                                   objectives: objectives })
+    }
+
+    pub fn decode_grasp_message(thing: CborType) -> Result<GraspMessage, ConnectError> {
+        match thing {
+            CborType::Array(contents) if contents.len() >= 2 => {
+                let (msgtype, session_id) = decode_base_grasp(&contents)?;
+                match msgtype {
+                    0 => Self::decode_grasp_noop(session_id, &contents),
+                    1 => Self::decode_grasp_discovery(session_id, &contents),
+                    2 => Self::decode_grasp_response(session_id, &contents),
+                    3 => Self::decode_grasp_req_neg(session_id, &contents),
+                    4 => Self::decode_grasp_req_syn(session_id, &contents),
+                    5 => Self::decode_grasp_negotiate(session_id, &contents),
+                    6 => Self::decode_grasp_end(session_id, &contents),
+                    7 => Self::decode_grasp_wait(session_id, &contents),
+                    8 => Self::decode_grasp_synch(session_id, &contents),
+                    9 => Self::decode_grasp_flood(session_id, &contents),
+                    _ => return Err(ConnectError::MisformedGraspMessage)
+                }
+            },
+            _ => return Err(ConnectError::MisformedGraspMessage)
+        }
+    }
+
+    pub fn decode_dull_grasp_message(thing: CborType) -> Result<GraspMessage, ConnectError> {
+        match thing {
+            CborType::Array(contents) if contents.len() >= 2 => {
+                let (msgtype, session_id) = decode_base_grasp(&contents)?;
+                match msgtype {
+                    0 => Self::decode_grasp_noop(session_id, &contents),
+                    9 => Self::decode_grasp_flood(session_id, &contents),
+                    _ => return Err(ConnectError::IllegalDullGraspMessage)
+                }
+            },
+            _ => return Err(ConnectError::MisformedGraspMessage)
+        }
+    }
+
+}
+
+#[allow(unused_imports)]
+use crate::graspsamples;
+
+#[allow(unused_imports)]
+use cbor::decoder::decode;
+
+#[test]
+fn test_parse_grasp_001() -> Result<(), ConnectError> {
+    let s001 = &graspsamples::PACKET_001;
+    assert_eq!(s001[14], 0x60);   /* IPv6 packet */
+
+    let slice = &s001[(54+8)..];
+    assert_eq!(slice[0], 0x85);   /* beginning of array */
+    let thing = decode(slice).unwrap();
+    GraspMessage::decode_grasp_message(thing)?;
+
+    Ok(())
+}

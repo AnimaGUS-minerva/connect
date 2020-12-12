@@ -28,8 +28,6 @@ futures-sink  = "*"
 gag           = "*"
 libc          = "*"
 custom_error  = "*"
-enum_primitive = "*"
-num           = "*"
 
 [dev-dependencies]
 tokio-test    = "0.2"

@@ -20,7 +20,11 @@ use custom_error::custom_error;
 
 // Note the use of braces rather than parentheses.
 custom_error!{pub ConnectError
-    NotIpV6Address   = "Not an IPv6 Address",
-    MisformedGraspMessage = "Misformed GRASP message received"
+              NotIpV6Address   = "Not an IPv6 Address",
+              MisformedGraspMessage   = "Misformed GRASP message received",
+              MisformedGraspObjective = "Misformed GRASP objective received",
+              UnimplementedGraspStuff = "Valid GRASP, but not yet implemented",
+              MisformedIpv6Addr       = "IPv6 address which is not 16 bytes",
+              IllegalDullGraspMessage = "Message now allowed on GRASP DULL mode"
 }
 

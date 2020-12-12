@@ -26,9 +26,6 @@ use std::io::Error;
 use std::net::SocketAddrV6;
 use std::sync::Arc;
 use futures::lock::Mutex;
-use cbor::CborType;
-use cbor::decoder::decode;
-use crate::enum_primitive::FromPrimitive;
 
 use crate::dull::{IfIndex,DullChild};
 use crate::grasp;
@@ -104,7 +101,7 @@ impl GraspDaemon {
 
 #[allow(unused_imports)]
 use crate::error::ConnectError;
-use crate::graspsamples;
+
 
 #[allow(unused_macros)]
 macro_rules! aw {
@@ -127,82 +124,3 @@ fn test_construct_grasp_daemon() {
     assert_eq!(aw!(construct_grasp_daemon()).unwrap(), ());
 }
 
-fn decode_grasp_noop(_contents: &Vec<CborType>) -> Result<(), ConnectError> {
-    Ok(())
-}
-
-fn decode_grasp_discovery(_contents: &Vec<CborType>) -> Result<(), ConnectError> {
-    Ok(())
-}
-
-fn decode_grasp_response(_contents: &Vec<CborType>) -> Result<(), ConnectError> {
-    Ok(())
-}
-
-fn decode_grasp_req_neg(_contents: &Vec<CborType>) -> Result<(), ConnectError> {
-    Ok(())
-}
-
-fn decode_grasp_req_syn(_contents: &Vec<CborType>) -> Result<(), ConnectError> {
-    Ok(())
-}
-
-fn decode_grasp_negotiate(_contents: &Vec<CborType>) -> Result<(), ConnectError> {
-    Ok(())
-}
-
-fn decode_grasp_end(_contents: &Vec<CborType>) -> Result<(), ConnectError> {
-    Ok(())
-}
-
-fn decode_grasp_wait(_contents: &Vec<CborType>) -> Result<(), ConnectError> {
-    Ok(())
-}
-
-fn decode_grasp_synch(_contents: &Vec<CborType>) -> Result<(), ConnectError> {
-    Ok(())
-}
-
-fn decode_grasp_flood(_contents: &Vec<CborType>) -> Result<(), ConnectError> {
-    Ok(())
-}
-
-fn decode_grasp_message(thing: CborType) -> Result<(), ConnectError> {
-    match thing {
-        CborType::Array(contents) if contents.len() >= 2 => {
-            let msgtype = match contents[0] {
-                CborType::Integer(num) => {
-                    grasp::MESSAGE_TYPE::from_u64(num).unwrap()
-                }
-                _ => return Err(ConnectError::MisformedGraspMessage)
-            };
-            match msgtype {
-                grasp::MESSAGE_TYPE::M_NOOP      => decode_grasp_noop(&contents),
-                grasp::MESSAGE_TYPE::M_DISCOVERY => decode_grasp_discovery(&contents),
-                grasp::MESSAGE_TYPE::M_RESPONSE  => decode_grasp_response(&contents),
-                grasp::MESSAGE_TYPE::M_REQ_NEG   => decode_grasp_req_neg(&contents),
-                grasp::MESSAGE_TYPE::M_REQ_SYN   => decode_grasp_req_syn(&contents),
-                grasp::MESSAGE_TYPE::M_NEGOTIATE => decode_grasp_negotiate(&contents),
-                grasp::MESSAGE_TYPE::M_END       => decode_grasp_end(&contents),
-                grasp::MESSAGE_TYPE::M_WAIT      => decode_grasp_wait(&contents),
-                grasp::MESSAGE_TYPE::M_SYNCH     => decode_grasp_synch(&contents),
-                grasp::MESSAGE_TYPE::M_FLOOD     => decode_grasp_flood(&contents),
-                _ => return Err(ConnectError::MisformedGraspMessage)
-            }
-        },
-        _ => return Err(ConnectError::MisformedGraspMessage)
-    }
-}
-
-#[test]
-fn test_parse_grasp_001() -> Result<(), ConnectError> {
-    let s001 = &graspsamples::PACKET_000;
-    assert_eq!(s001[14], 0x60);   /* IPv6 packet */
-
-    let slice = &s001[(54+8)..];
-    assert_eq!(slice[0], 0x85);   /* beginning of array */
-    let thing = decode(slice).unwrap();
-    decode_grasp_message(thing)?;
-
-    Ok(())
-}
