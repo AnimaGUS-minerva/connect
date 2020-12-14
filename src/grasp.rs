@@ -356,3 +356,23 @@ fn test_parse_grasp_001() -> Result<(), ConnectError> {
 
     Ok(())
 }
+
+#[test]
+fn test_valid_ipv6_bytes() {
+    let v6_01 = vec![0xfe, 0x80, 0,0,0,0,0,0,
+                     0,    0,    0,0,0,0,0,1];
+    let expected = "FE80::1".parse::<Ipv6Addr>().unwrap();
+    assert_eq!(decode_ipv6_bytes(&v6_01).unwrap(), expected);
+
+    let v6_02 = vec![0xfe, 0x80, 0,0,0,0,0,0,
+                     0,    0,    0,0,0,0,0];  /* too short by one byte */
+    let result = decode_ipv6_bytes(&v6_02);
+    let expected = Err(ConnectError::MisformedIpv6Addr);
+    assert_eq!(expected, result);
+
+    let v6_03 = vec![0xfe, 0x80, 0,0,0,0,0,0,0,0,
+                     0,    0,    0,0,0,0,0];  /* too long by one byte */
+    let result = decode_ipv6_bytes(&v6_03);
+    let expected = Err(ConnectError::MisformedIpv6Addr);
+    assert_eq!(expected, result);
+}

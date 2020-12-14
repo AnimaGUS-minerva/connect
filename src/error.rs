@@ -19,7 +19,9 @@ extern crate custom_error;
 use custom_error::custom_error;
 
 // Note the use of braces rather than parentheses.
-custom_error!{pub ConnectError
+custom_error!{
+    #[derive(PartialEq)]
+    pub ConnectError
               NotIpV6Address   = "Not an IPv6 Address",
               MisformedGraspMessage   = "Misformed GRASP message received",
               MisformedGraspObjective = "Misformed GRASP objective received",
