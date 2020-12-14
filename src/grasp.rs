@@ -417,11 +417,9 @@ fn test_valid_ipv6_cbor_bytes() {
     assert_eq!(expected, result);
 }
 
-#[test]
-fn test_ipv6_locator() {
+fn build_locator_01() -> Vec<CborType> {
     let v6_01  = vec![0xfe, 0x80,0,0, 0,0,0,0,
                       0,    0,   0,0, 0,0,0x11,0x22];
-    let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
 
     let v6_b01 = CborType::Bytes(v6_01);
 
@@ -429,15 +427,38 @@ fn test_ipv6_locator() {
                        v6_b01,
                        CborType::Integer(IPPROTO_TCP as u64),
                        CborType::Integer(4598)];
+    return locator;
+}
 
+fn build_locator_c02() -> CborType {
+    return CborType::Array(build_locator_01());
+}
+
+#[test]
+fn test_ipv6_locator_01() {
+    let locator = build_locator_01();
     let result = grasp_parse_ipv6_locator(&locator);
+    let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
     let expected = Ok(Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
                                                               transport_proto: IPPROTO_TCP,
                                                               port_number: 4598} ));
     assert_eq!(result, expected);
+}
 
-    let result = grasp_parse_locator(&CborType::Array(locator));
+#[test]
+fn test_ipv6_locator_02() {
+    let locator  = build_locator_c02();
+
+    let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
+    let expected = Ok(Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
+                                                              transport_proto: IPPROTO_TCP,
+                                                              port_number: 4598} ));
+    let result = grasp_parse_locator(&locator);
     assert_eq!(result, expected);
+}
+
+#[test]
+fn test_ipv4_locator_03() {
 
     let locator4 = vec![CborType::Integer(O_IPV4_LOCATOR),
                        CborType::Bytes(vec![127,0,0,1]),
