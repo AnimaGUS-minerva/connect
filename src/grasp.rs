@@ -378,11 +378,24 @@ use crate::graspsamples;
 use cbor::decoder::decode;
 
 #[test]
-fn test_parse_grasp_001() -> Result<(), ConnectError> {
-    let s001 = &graspsamples::PACKET_001;
-    assert_eq!(s001[14], 0x60);   /* IPv6 packet */
+fn test_parse_grasp_000() -> Result<(), ConnectError> {
+    let s000 = &graspsamples::PACKET_000;
+    assert_eq!(s000[14], 0x60);   /* IPv6 packet */
 
-    let slice = &s001[(54+8)..];
+    let slice = &s000[(54+8)..];
+    assert_eq!(slice[0], 0x85);   /* beginning of array */
+    let thing = decode(slice).unwrap();
+    GraspMessage::decode_grasp_message(thing)?;
+
+    Ok(())
+}
+
+#[test]
+fn test_parse_grasp_420() -> Result<(), ConnectError> {
+    let s000 = &graspsamples::PACKET_420;
+    assert_eq!(s000[14], 0x60);   /* IPv6 packet */
+
+    let slice = &s000[(54+8)..];
     assert_eq!(slice[0], 0x85);   /* beginning of array */
     let thing = decode(slice).unwrap();
     GraspMessage::decode_grasp_message(thing)?;
