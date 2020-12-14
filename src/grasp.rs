@@ -23,25 +23,31 @@ use crate::error::ConnectError;
 use cbor::CborType;
 
 pub const GRASP_PORT: u32 = 7017;
+pub const IPPROTO_TCP: u16 = 6;
+pub const IPPROTO_UDP: u16 = 17;
 
 type SessionID  = u32;
 type Ttl        = u32;  /* miliseconds */
 
-#[allow(non_camel_case_types)]
-#[derive(Debug, PartialEq)]
-pub enum MESSAGE_TYPE_num {
-    M_NOOP = 0,
-    M_DISCOVERY = 1,
-    M_RESPONSE = 2,
-    M_REQ_NEG = 3,
-    M_REQ_SYN = 4,
-    M_NEGOTIATE = 5,
-    M_END = 6,
-    M_WAIT = 7,
-    M_SYNCH = 8,
-    M_FLOOD  = 9,
-    M_INVALID = 99
-}
+pub const M_NOOP:         u64 = 0;
+pub const M_DISCOVERY:    u64 = 1;
+pub const M_RESPONSE:     u64 = 2;
+pub const M_REQ_NEG:      u64 = 3;
+pub const M_REQ_SYN:      u64 = 4;
+pub const M_NEGOTIATE:    u64 = 5;
+pub const M_END:          u64 = 6;
+pub const M_WAIT:         u64 = 7;
+pub const M_SYNCH:        u64 = 8;
+pub const M_FLOOD:        u64 = 9;
+pub const M_INVALID:      u64 = 99;
+pub const O_DIVERT:       u64 = 100;
+pub const O_ACCEPT:       u64 = 101;
+pub const O_DECLINE:      u64 = 102;
+pub const O_IPV6_LOCATOR: u64 = 103;
+pub const O_IPV4_LOCATOR: u64 = 104;
+pub const O_FQDN_LOCATOR: u64 = 105;
+pub const O_URI_LOCATOR:  u64 = 106;
+
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq)]
@@ -138,10 +144,10 @@ fn grasp_parse_locator(ctlocator: &CborType) -> Result<Option<GraspLocator>, Con
     };
 
     match ctarray[0] {
-        CborType::Integer(103) => grasp_parse_ipv6_locator(ctarray),
-        CborType::Integer(104) => grasp_parse_ipv4_locator(ctarray),
-        CborType::Integer(105) => grasp_parse_fqdn_locator(ctarray),
-        CborType::Integer(106) => grasp_parse_uri_locator(ctarray),
+        CborType::Integer(O_IPV6_LOCATOR) => grasp_parse_ipv6_locator(ctarray),
+        CborType::Integer(O_IPV4_LOCATOR) => grasp_parse_ipv4_locator(ctarray),
+        CborType::Integer(O_FQDN_LOCATOR) => grasp_parse_fqdn_locator(ctarray),
+        CborType::Integer(O_URI_LOCATOR)  => grasp_parse_uri_locator(ctarray),
         _ => return Err(ConnectError::MisformedGraspObjective)
     }
 }
