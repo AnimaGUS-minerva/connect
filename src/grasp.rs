@@ -438,5 +438,15 @@ fn test_ipv6_locator() {
 
     let result = grasp_parse_locator(&CborType::Array(locator));
     assert_eq!(result, expected);
+
+    let locator4 = vec![CborType::Integer(O_IPV4_LOCATOR),
+                       CborType::Bytes(vec![127,0,0,1]),
+                       CborType::Integer(IPPROTO_TCP as u64),
+                       CborType::Integer(4598)];
+    let result = grasp_parse_ipv6_locator(&locator4);
+    assert_eq!(result, Err(ConnectError::MisformedIpv6Addr));
+
+    let result = grasp_parse_locator(&CborType::Array(locator4));
+    assert_eq!(result, Err(ConnectError::UnimplementedGraspStuff));
 }
 
