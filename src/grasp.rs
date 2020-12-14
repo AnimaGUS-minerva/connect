@@ -431,8 +431,12 @@ fn test_ipv6_locator() {
                        CborType::Integer(4598)];
 
     let result = grasp_parse_ipv6_locator(&locator);
-    assert_eq!(result, Ok(Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
+    let expected = Ok(Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
                                                               transport_proto: IPPROTO_TCP,
-                                                              port_number: 4598} )));
+                                                              port_number: 4598} ));
+    assert_eq!(result, expected);
+
+    let result = grasp_parse_locator(&CborType::Array(locator));
+    assert_eq!(result, expected);
 }
 
