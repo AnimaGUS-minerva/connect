@@ -131,8 +131,19 @@ fn grasp_parse_ipv6_locator(array: &Vec<CborType>) -> Result<Option<GraspLocator
     if array.len() < 4 {
         return Err(ConnectError::MisformedGraspObjective);
     }
-    let _v6addrbytes = decode_ipv6_cbytes(&array[1])?;
-    Err(ConnectError::MisformedGraspObjective)
+    let v6addr = decode_ipv6_cbytes(&array[1])?;
+    let transport_proto = match array[2] {
+        CborType::Integer(num) => num,
+        _ => return Err(ConnectError::MisformedGraspObjective)
+    };
+    let port_number = match array[3] {
+        CborType::Integer(num) => num,
+        _ => return Err(ConnectError::MisformedGraspObjective)
+    };
+
+    Ok(Some(GraspLocator::O_IPv6_LOCATOR { v6addr: v6addr,
+                                           transport_proto: (transport_proto & 0xffff) as u16,
+                                           port_number:     (port_number & 0xffff) as u16 }))
 }
 
 fn grasp_parse_locator(ctlocator: &CborType) -> Result<Option<GraspLocator>, ConnectError>
@@ -405,3 +416,23 @@ fn test_valid_ipv6_cbor_bytes() {
     let expected = Err(ConnectError::MisformedIpv6Addr);
     assert_eq!(expected, result);
 }
+
+#[test]
+fn test_ipv6_locator() {
+    let v6_01  = vec![0xfe, 0x80,0,0, 0,0,0,0,
+                      0,    0,   0,0, 0,0,0x11,0x22];
+    let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
+
+    let v6_b01 = CborType::Bytes(v6_01);
+
+    let locator = vec![CborType::Integer(O_IPV6_LOCATOR),
+                       v6_b01,
+                       CborType::Integer(IPPROTO_TCP as u64),
+                       CborType::Integer(4598)];
+
+    let result = grasp_parse_ipv6_locator(&locator);
+    assert_eq!(result, Ok(Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
+                                                              transport_proto: IPPROTO_TCP,
+                                                              port_number: 4598} )));
+}
+
