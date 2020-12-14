@@ -446,6 +446,7 @@ fn test_valid_ipv6_cbor_bytes() {
     assert_eq!(expected, result);
 }
 
+#[allow(dead_code)]
 fn build_locator_01() -> Vec<CborType> {
     let v6_01  = vec![0xfe, 0x80,0,0, 0,0,0,0,
                       0,    0,   0,0, 0,0,0x11,0x22];
@@ -459,6 +460,7 @@ fn build_locator_01() -> Vec<CborType> {
     return locator;
 }
 
+#[allow(dead_code)]
 fn build_locator_c02() -> CborType {
     return CborType::Array(build_locator_01());
 }
@@ -500,14 +502,16 @@ fn test_ipv4_locator_03() {
     assert_eq!(result, Err(ConnectError::UnimplementedGraspStuff));
 }
 
+#[allow(dead_code)]
 fn build_objective_c01() -> CborType {
     let obj01 = CborType::Array(vec![CborType::String("EX1@example".to_string()),
                                      CborType::Integer(4),            /* F_SYNCH */
                                      CborType::Integer(32),           /* loop-count */
                                      CborType::String("HELP!".to_string())]);
     return obj01;
-    }
+}
 
+#[allow(dead_code)]
 fn build_objective_c03() -> CborType {
     let obj03 = CborType::Array(vec![CborType::String("EX2@example".to_string()),
                                      CborType::Integer(6),            /* F_SYNCH */
@@ -545,21 +549,5 @@ fn test_flood_objective() {
                                                 locator: exp_locator2 }]));
 }
 
-    /*
-#[test]
-fn test_grasp_flood() {
-
-    let v6_01  = vec![0xfe, 0x80,0,0, 0,0,0,0,
-                      0,    0,   0,0, 0,0,0x11,0x22];
-    let session_id = 12345;
-    let contents = vec![CborType::Integer(M_FLOOD),
-                        CborType::Integer(session_id),
-                        CborType::Bytes(v6_01),         /* initiator */
-                        CborType::Integer(64),          /* TTL */
-
-    let result = decode_grasp_flood(session_id, &contents);
-}
-
-     */
 
 
