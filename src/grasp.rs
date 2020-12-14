@@ -163,25 +163,34 @@ fn grasp_parse_locator(ctlocator: &CborType) -> Result<Option<GraspLocator>, Con
     }
 }
 
-fn grasp_parse_objective(ctobjpair: &Vec<CborType>) -> Result<GraspObjective, ConnectError>
+fn decode_objective(ctobjpair: &Vec<CborType>) -> Result<GraspObjective, ConnectError>
 {
     match &ctobjpair[0] {
         CborType::Array(obj) => {
-            println!("name: {:?} size: {}", obj[0], obj.len());
+            //println!("name: {:?} size: {}", obj[0], obj.len());
 
             let name = match &obj[0] {
                 CborType::String(name)    => name,
-                _ => return Err(ConnectError::MisformedGraspObjective)
+                _ => {
+                    //println!("not a string");
+                    return Err(ConnectError::MisformedGraspObjective)
+                }
             };
 
             let flags = match &obj[1] {
                 CborType::Integer(flags)  => flags,
-                _ => return Err(ConnectError::MisformedGraspObjective)
+                _ => {
+                    //println!("not an int");
+                    return Err(ConnectError::MisformedGraspObjective)
+                }
             };
 
             let loopcnt = match &obj[2] {
                 CborType::Integer(loopcnt) => loopcnt,
-                _ => return Err(ConnectError::MisformedGraspObjective)
+                _ => {
+                    //println!("not an int");
+                    return Err(ConnectError::MisformedGraspObjective)
+                }
             };
 
             let locator = grasp_parse_locator(&ctobjpair[1])?;
@@ -202,8 +211,56 @@ fn grasp_parse_objective(ctobjpair: &Vec<CborType>) -> Result<GraspObjective, Co
                                 locator: locator
             })
         }
-        _ => return Err(ConnectError::MisformedGraspObjective)
+        _ => {
+            //println!("not correct array");
+            return Err(ConnectError::MisformedGraspObjective)
+        }
     }
+}
+
+fn decode_objectives(objectives: &[CborType]) -> Result<Vec<GraspObjective>, ConnectError> {
+    let mut object_vec = Vec::<GraspObjective>::new();
+    let mut objerror = None;
+    let mut objcount = 0;
+
+    for stuff in objectives {
+        objcount += 1;
+        match stuff {
+            CborType::Array(objective) => {
+                println!("{} len: {} objectives: {:?}", objcount, objective.len(), objective);
+
+                if objective.len() < 2 {
+                    objerror = Some(Err(ConnectError::MisformedGraspObjective));
+                    continue;
+                }
+                let mobj = decode_objective(objective);
+
+                if let Ok(obj) = mobj {
+                    object_vec.push(obj);
+                } else {
+                    objerror = Some(mobj);
+                    continue;
+                }
+            }
+            _ => {
+                return Err(ConnectError::MisformedGraspMessage)
+            }
+        }
+    }
+
+    // if no objectives, and saw an error, then return it.
+    if object_vec.len() == 0 {
+        match objerror {
+            None => {},
+            _ => {
+                println!("no objectives, only errors");
+                return Err(ConnectError::MisformedGraspMessage)
+            },
+        }
+    }
+
+    /* otherwise, return vector of objectives, even if empty. */
+    Ok(object_vec)
 }
 
 fn decode_base_grasp(contents: &Vec<CborType>) -> Result<(u32, u32), ConnectError> {
@@ -268,48 +325,7 @@ impl GraspMessage {
             _ => return Err(ConnectError::MisformedGraspMessage)
         };
 
-        let objectives = match &contents[4] {
-            CborType::Array(stuff) => {
-                println!("objectives: {:?}", stuff);
-                let mut object_vec = Vec::<GraspObjective>::new();
-
-                let mut objerror = None;
-
-                for ctobjpair in stuff.iter() {
-                    let objective = match ctobjpair {
-                        CborType::Array(objective) => objective,
-                        _ => {
-                            objerror = Some(Err(ConnectError::MisformedGraspObjective));
-                            continue;
-                        }
-                    };
-
-                    if objective.len() <= 2 {
-                        objerror = Some(Err(ConnectError::MisformedGraspObjective));
-                        continue;
-                    }
-                    let mobj = grasp_parse_objective(objective);
-
-                    if let Ok(obj) = mobj {
-                        object_vec.push(obj);
-                    } else {
-                        objerror = Some(mobj);
-                        continue;
-                    }
-                }
-                // if no objectives, and saw an error, then return it.
-                if object_vec.len() == 0 {
-                    match objerror {
-                        None => {},
-                        _ => return Err(ConnectError::MisformedGraspMessage),
-                    }
-                }
-
-                /* otherwise, return vector of objectives, even if empty. */
-                object_vec
-            }
-            _ => return Err(ConnectError::MisformedGraspMessage)
-        };
+        let objectives = decode_objectives(&contents[4..])?;
 
         Ok(GraspMessage::M_FLOOD { session_id: session_id,
                                    initiator: initiator,
@@ -470,4 +486,67 @@ fn test_ipv4_locator_03() {
     let result = grasp_parse_locator(&CborType::Array(locator4));
     assert_eq!(result, Err(ConnectError::UnimplementedGraspStuff));
 }
+
+fn build_objective_c01() -> CborType {
+    let obj01 = CborType::Array(vec![CborType::String("EX1@example".to_string()),
+                                     CborType::Integer(4),            /* F_SYNCH */
+                                     CborType::Integer(32),           /* loop-count */
+                                     CborType::String("HELP!".to_string())]);
+    return obj01;
+    }
+
+fn build_objective_c03() -> CborType {
+    let obj03 = CborType::Array(vec![CborType::String("EX2@example".to_string()),
+                                     CborType::Integer(6),            /* F_SYNCH */
+                                     CborType::Integer(31),           /* loop-count */
+                                     CborType::String("Goaway!".to_string())]);
+    return obj03;
+}
+
+#[test]
+fn test_flood_objective() {
+    let contents = vec![CborType::Array(vec![build_objective_c01(),
+                                             build_locator_c02()]),
+                        CborType::Array(vec![build_objective_c03(),
+                                             build_locator_c02()])];
+    let result = decode_objectives(&contents[..]);
+
+    let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
+    let exp_locator1 = Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
+                                                           transport_proto: IPPROTO_TCP,
+                                                           port_number: 4598} );
+
+    let exp_locator2 = Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
+                                                           transport_proto: IPPROTO_TCP,
+                                                           port_number: 4598} );
+
+    assert_eq!(result, Ok(vec![GraspObjective { objective_name: "EX1@example".to_string(),
+                                                objective_flags: 4,
+                                                loop_count: 32,
+                                                objective_value: Some("HELP!".to_string()),
+                                                locator: exp_locator1 },
+                               GraspObjective { objective_name: "EX2@example".to_string(),
+                                                objective_flags: 6,
+                                                loop_count: 31,
+                                                objective_value: Some("Goaway!".to_string()),
+                                                locator: exp_locator2 }]));
+}
+
+    /*
+#[test]
+fn test_grasp_flood() {
+
+    let v6_01  = vec![0xfe, 0x80,0,0, 0,0,0,0,
+                      0,    0,   0,0, 0,0,0x11,0x22];
+    let session_id = 12345;
+    let contents = vec![CborType::Integer(M_FLOOD),
+                        CborType::Integer(session_id),
+                        CborType::Bytes(v6_01),         /* initiator */
+                        CborType::Integer(64),          /* TTL */
+
+    let result = decode_grasp_flood(session_id, &contents);
+}
+
+     */
+
 
