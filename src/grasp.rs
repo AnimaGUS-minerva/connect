@@ -376,3 +376,26 @@ fn test_valid_ipv6_bytes() {
     let expected = Err(ConnectError::MisformedIpv6Addr);
     assert_eq!(expected, result);
 }
+
+#[test]
+fn test_valid_ipv6_cbor_bytes() {
+    let v6_01  = vec![0xfe, 0x80,0,0, 0,0,0,0,
+                      0,    0,   0,0, 0,0,0,1];
+    let v6_b01 = CborType::Bytes(v6_01);
+    let expected = "FE80::1".parse::<Ipv6Addr>().unwrap();
+    assert_eq!(decode_ipv6_cbytes(&v6_b01).unwrap(), expected);
+
+    let v6_02 = vec![0xfe, 0x80, 0,0,0,0,0,0,
+                     0,    0,    0,0,0,0,0];  /* too short by one byte */
+    let v6_b02 = CborType::Bytes(v6_02);
+    let result = decode_ipv6_cbytes(&v6_b02);
+    let expected = Err(ConnectError::MisformedIpv6Addr);
+    assert_eq!(expected, result);
+
+    let v6_03 = vec![0xfe, 0x80, 0,0,0,0,0,0,0,0,
+                     0,    0,    0,0,0,0,0];  /* too long by one byte */
+    let v6_b03 = CborType::Bytes(v6_03);
+    let result = decode_ipv6_cbytes(&v6_b03);
+    let expected = Err(ConnectError::MisformedIpv6Addr);
+    assert_eq!(expected, result);
+}
