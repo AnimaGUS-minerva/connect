@@ -371,182 +371,179 @@ impl GraspMessage {
 
 }
 
-#[allow(unused_imports)]
-use crate::graspsamples;
+#[cfg(test)]
+mod tests {
+    use crate::graspsamples;
+    use cbor::decoder::decode;
+    use super::*;
 
-#[allow(unused_imports)]
-use cbor::decoder::decode;
+    #[test]
+    fn test_parse_grasp_000() -> Result<(), ConnectError> {
+        let s000 = &graspsamples::PACKET_000;
+        assert_eq!(s000[14], 0x60);   /* IPv6 packet */
 
-#[test]
-fn test_parse_grasp_000() -> Result<(), ConnectError> {
-    let s000 = &graspsamples::PACKET_000;
-    assert_eq!(s000[14], 0x60);   /* IPv6 packet */
+        let slice = &s000[(54+8)..];
+        assert_eq!(slice[0], 0x85);   /* beginning of array */
+        let thing = decode(slice).unwrap();
+        GraspMessage::decode_grasp_message(thing)?;
 
-    let slice = &s000[(54+8)..];
-    assert_eq!(slice[0], 0x85);   /* beginning of array */
-    let thing = decode(slice).unwrap();
-    GraspMessage::decode_grasp_message(thing)?;
+        Ok(())
+    }
 
-    Ok(())
-}
+    #[test]
+    fn test_parse_grasp_420() -> Result<(), ConnectError> {
+        let s000 = &graspsamples::PACKET_420;
+        assert_eq!(s000[14], 0x60);   /* IPv6 packet */
 
-#[test]
-fn test_parse_grasp_420() -> Result<(), ConnectError> {
-    let s000 = &graspsamples::PACKET_420;
-    assert_eq!(s000[14], 0x60);   /* IPv6 packet */
+        let slice = &s000[(54+8)..];
+        assert_eq!(slice[0], 0x85);   /* beginning of array */
+        let thing = decode(slice).unwrap();
+        GraspMessage::decode_grasp_message(thing)?;
 
-    let slice = &s000[(54+8)..];
-    assert_eq!(slice[0], 0x85);   /* beginning of array */
-    let thing = decode(slice).unwrap();
-    GraspMessage::decode_grasp_message(thing)?;
+        Ok(())
+    }
 
-    Ok(())
-}
+    #[test]
+    fn test_valid_ipv6_bytes() {
+        let v6_01 = vec![0xfe, 0x80, 0,0,0,0,0,0,
+                         0,    0,    0,0,0,0,0,1];
+        let expected = "FE80::1".parse::<Ipv6Addr>().unwrap();
+        assert_eq!(decode_ipv6_bytes(&v6_01).unwrap(), expected);
 
-#[test]
-fn test_valid_ipv6_bytes() {
-    let v6_01 = vec![0xfe, 0x80, 0,0,0,0,0,0,
-                     0,    0,    0,0,0,0,0,1];
-    let expected = "FE80::1".parse::<Ipv6Addr>().unwrap();
-    assert_eq!(decode_ipv6_bytes(&v6_01).unwrap(), expected);
+        let v6_02 = vec![0xfe, 0x80, 0,0,0,0,0,0,
+                         0,    0,    0,0,0,0,0];  /* too short by one byte */
+        let result = decode_ipv6_bytes(&v6_02);
+        let expected = Err(ConnectError::MisformedIpv6Addr);
+        assert_eq!(expected, result);
 
-    let v6_02 = vec![0xfe, 0x80, 0,0,0,0,0,0,
-                     0,    0,    0,0,0,0,0];  /* too short by one byte */
-    let result = decode_ipv6_bytes(&v6_02);
-    let expected = Err(ConnectError::MisformedIpv6Addr);
-    assert_eq!(expected, result);
+        let v6_03 = vec![0xfe, 0x80, 0,0,0,0,0,0,0,0,
+                         0,    0,    0,0,0,0,0];  /* too long by one byte */
+        let result = decode_ipv6_bytes(&v6_03);
+        let expected = Err(ConnectError::MisformedIpv6Addr);
+        assert_eq!(expected, result);
+    }
 
-    let v6_03 = vec![0xfe, 0x80, 0,0,0,0,0,0,0,0,
-                     0,    0,    0,0,0,0,0];  /* too long by one byte */
-    let result = decode_ipv6_bytes(&v6_03);
-    let expected = Err(ConnectError::MisformedIpv6Addr);
-    assert_eq!(expected, result);
-}
+    #[test]
+    fn test_valid_ipv6_cbor_bytes() {
+        let v6_01  = vec![0xfe, 0x80,0,0, 0,0,0,0,
+                          0,    0,   0,0, 0,0,0,1];
+        let v6_b01 = CborType::Bytes(v6_01);
+        let expected = "FE80::1".parse::<Ipv6Addr>().unwrap();
+        assert_eq!(decode_ipv6_cbytes(&v6_b01).unwrap(), expected);
 
-#[test]
-fn test_valid_ipv6_cbor_bytes() {
-    let v6_01  = vec![0xfe, 0x80,0,0, 0,0,0,0,
-                      0,    0,   0,0, 0,0,0,1];
-    let v6_b01 = CborType::Bytes(v6_01);
-    let expected = "FE80::1".parse::<Ipv6Addr>().unwrap();
-    assert_eq!(decode_ipv6_cbytes(&v6_b01).unwrap(), expected);
+        let v6_02 = vec![0xfe, 0x80, 0,0,0,0,0,0,
+                         0,    0,    0,0,0,0,0];  /* too short by one byte */
+        let v6_b02 = CborType::Bytes(v6_02);
+        let result = decode_ipv6_cbytes(&v6_b02);
+        let expected = Err(ConnectError::MisformedIpv6Addr);
+        assert_eq!(expected, result);
 
-    let v6_02 = vec![0xfe, 0x80, 0,0,0,0,0,0,
-                     0,    0,    0,0,0,0,0];  /* too short by one byte */
-    let v6_b02 = CborType::Bytes(v6_02);
-    let result = decode_ipv6_cbytes(&v6_b02);
-    let expected = Err(ConnectError::MisformedIpv6Addr);
-    assert_eq!(expected, result);
+        let v6_03 = vec![0xfe, 0x80, 0,0,0,0,0,0,0,0,
+                         0,    0,    0,0,0,0,0];  /* too long by one byte */
+        let v6_b03 = CborType::Bytes(v6_03);
+        let result = decode_ipv6_cbytes(&v6_b03);
+        let expected = Err(ConnectError::MisformedIpv6Addr);
+        assert_eq!(expected, result);
+    }
 
-    let v6_03 = vec![0xfe, 0x80, 0,0,0,0,0,0,0,0,
-                     0,    0,    0,0,0,0,0];  /* too long by one byte */
-    let v6_b03 = CborType::Bytes(v6_03);
-    let result = decode_ipv6_cbytes(&v6_b03);
-    let expected = Err(ConnectError::MisformedIpv6Addr);
-    assert_eq!(expected, result);
-}
+    fn build_locator_01() -> Vec<CborType> {
+        let v6_01  = vec![0xfe, 0x80,0,0, 0,0,0,0,
+                          0,    0,   0,0, 0,0,0x11,0x22];
 
-#[allow(dead_code)]
-fn build_locator_01() -> Vec<CborType> {
-    let v6_01  = vec![0xfe, 0x80,0,0, 0,0,0,0,
-                      0,    0,   0,0, 0,0,0x11,0x22];
+        let v6_b01 = CborType::Bytes(v6_01);
 
-    let v6_b01 = CborType::Bytes(v6_01);
+        let locator = vec![CborType::Integer(O_IPV6_LOCATOR),
+                           v6_b01,
+                           CborType::Integer(IPPROTO_TCP as u64),
+                           CborType::Integer(4598)];
+        return locator;
+    }
 
-    let locator = vec![CborType::Integer(O_IPV6_LOCATOR),
-                       v6_b01,
-                       CborType::Integer(IPPROTO_TCP as u64),
-                       CborType::Integer(4598)];
-    return locator;
-}
+    fn build_locator_c02() -> CborType {
+        return CborType::Array(build_locator_01());
+    }
 
-#[allow(dead_code)]
-fn build_locator_c02() -> CborType {
-    return CborType::Array(build_locator_01());
-}
-
-#[test]
-fn test_ipv6_locator_01() {
-    let locator = build_locator_01();
-    let result = grasp_parse_ipv6_locator(&locator);
-    let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
-    let expected = Ok(Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
+    #[test]
+    fn test_ipv6_locator_01() {
+        let locator = build_locator_01();
+        let result = grasp_parse_ipv6_locator(&locator);
+        let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
+        let expected = Ok(Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
                                                               transport_proto: IPPROTO_TCP,
                                                               port_number: 4598} ));
-    assert_eq!(result, expected);
-}
+        assert_eq!(result, expected);
+    }
 
-#[test]
-fn test_ipv6_locator_02() {
-    let locator  = build_locator_c02();
+    #[test]
+    fn test_ipv6_locator_02() {
+        let locator  = build_locator_c02();
 
-    let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
-    let expected = Ok(Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
+        let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
+        let expected = Ok(Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
                                                               transport_proto: IPPROTO_TCP,
                                                               port_number: 4598} ));
-    let result = grasp_parse_locator(&locator);
-    assert_eq!(result, expected);
-}
+        let result = grasp_parse_locator(&locator);
+        assert_eq!(result, expected);
+    }
 
-#[test]
-fn test_ipv4_locator_03() {
+    #[test]
+    fn test_ipv4_locator_03() {
 
-    let locator4 = vec![CborType::Integer(O_IPV4_LOCATOR),
-                       CborType::Bytes(vec![127,0,0,1]),
-                       CborType::Integer(IPPROTO_TCP as u64),
-                       CborType::Integer(4598)];
-    let result = grasp_parse_ipv6_locator(&locator4);
-    assert_eq!(result, Err(ConnectError::MisformedIpv6Addr));
+        let locator4 = vec![CborType::Integer(O_IPV4_LOCATOR),
+                            CborType::Bytes(vec![127,0,0,1]),
+                            CborType::Integer(IPPROTO_TCP as u64),
+                            CborType::Integer(4598)];
+        let result = grasp_parse_ipv6_locator(&locator4);
+        assert_eq!(result, Err(ConnectError::MisformedIpv6Addr));
 
-    let result = grasp_parse_locator(&CborType::Array(locator4));
-    assert_eq!(result, Err(ConnectError::UnimplementedGraspStuff));
-}
+        let result = grasp_parse_locator(&CborType::Array(locator4));
+        assert_eq!(result, Err(ConnectError::UnimplementedGraspStuff));
+    }
 
-#[allow(dead_code)]
-fn build_objective_c01() -> CborType {
-    let obj01 = CborType::Array(vec![CborType::String("EX1@example".to_string()),
-                                     CborType::Integer(4),            /* F_SYNCH */
-                                     CborType::Integer(32),           /* loop-count */
-                                     CborType::String("HELP!".to_string())]);
-    return obj01;
-}
+    fn build_objective_c01() -> CborType {
+        let obj01 = CborType::Array(vec![CborType::String("EX1@example".to_string()),
+                                         CborType::Integer(4),            /* F_SYNCH */
+                                         CborType::Integer(32),           /* loop-count */
+                                         CborType::String("HELP!".to_string())]);
+        return obj01;
+    }
 
-#[allow(dead_code)]
-fn build_objective_c03() -> CborType {
-    let obj03 = CborType::Array(vec![CborType::String("EX2@example".to_string()),
-                                     CborType::Integer(6),            /* F_SYNCH */
-                                     CborType::Integer(31),           /* loop-count */
-                                     CborType::String("Goaway!".to_string())]);
-    return obj03;
-}
+    fn build_objective_c03() -> CborType {
+        let obj03 = CborType::Array(vec![CborType::String("EX2@example".to_string()),
+                                         CborType::Integer(6),            /* F_SYNCH */
+                                         CborType::Integer(31),           /* loop-count */
+                                         CborType::String("Goaway!".to_string())]);
+        return obj03;
+    }
 
-#[test]
-fn test_flood_objective() {
-    let contents = vec![CborType::Array(vec![build_objective_c01(),
-                                             build_locator_c02()]),
-                        CborType::Array(vec![build_objective_c03(),
-                                             build_locator_c02()])];
-    let result = decode_objectives(&contents[..]);
+    #[test]
+    fn test_flood_objective() {
+        let contents = vec![CborType::Array(vec![build_objective_c01(),
+                                                 build_locator_c02()]),
+                            CborType::Array(vec![build_objective_c03(),
+                                                 build_locator_c02()])];
+        let result = decode_objectives(&contents[..]);
 
-    let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
-    let exp_locator1 = Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
-                                                           transport_proto: IPPROTO_TCP,
-                                                           port_number: 4598} );
+        let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
+        let exp_locator1 = Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
+                                                               transport_proto: IPPROTO_TCP,
+                                                               port_number: 4598} );
 
-    let exp_locator2 = Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
-                                                           transport_proto: IPPROTO_TCP,
-                                                           port_number: 4598} );
+        let exp_locator2 = Some(GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
+                                                               transport_proto: IPPROTO_TCP,
+                                                               port_number: 4598} );
 
-    assert_eq!(result, Ok(vec![GraspObjective { objective_name: "EX1@example".to_string(),
-                                                objective_flags: 4,
-                                                loop_count: 32,
-                                                objective_value: Some("HELP!".to_string()),
-                                                locator: exp_locator1 },
-                               GraspObjective { objective_name: "EX2@example".to_string(),
-                                                objective_flags: 6,
-                                                loop_count: 31,
-                                                objective_value: Some("Goaway!".to_string()),
-                                                locator: exp_locator2 }]));
+        assert_eq!(result, Ok(vec![GraspObjective { objective_name: "EX1@example".to_string(),
+                                                    objective_flags: 4,
+                                                    loop_count: 32,
+                                                    objective_value: Some("HELP!".to_string()),
+                                                    locator: exp_locator1 },
+                                   GraspObjective { objective_name: "EX2@example".to_string(),
+                                                    objective_flags: 6,
+                                                    loop_count: 31,
+                                                    objective_value: Some("Goaway!".to_string()),
+                                                    locator: exp_locator2 }]));
+    }
 }
 
 

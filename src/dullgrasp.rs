@@ -99,28 +99,28 @@ impl GraspDaemon {
 
 }
 
-#[allow(unused_imports)]
-use crate::error::ConnectError;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! aw {
+        ($e:expr) => {
+            tokio_test::block_on($e)
+        };
+    }
+
+    async fn construct_grasp_daemon() -> Result<(), std::io::Error> {
+        let val = "::1".parse::<Ipv6Addr>().unwrap();
+
+        let _gp = GraspDaemon::initdaemon(val, 0).await;
+        Ok(())
+    }
 
 
-#[allow(unused_macros)]
-macro_rules! aw {
-    ($e:expr) => {
-        tokio_test::block_on($e)
-    };
+    #[test]
+    fn test_construct_grasp_daemon() {
+        assert_eq!(aw!(construct_grasp_daemon()).unwrap(), ());
+    }
 }
 
-#[allow(dead_code)]
-async fn construct_grasp_daemon() -> Result<(), std::io::Error> {
-    let val = "::1".parse::<Ipv6Addr>().unwrap();
-
-    let _gp = GraspDaemon::initdaemon(val, 0).await;
-    Ok(())
-}
-
-
-#[test]
-fn test_construct_grasp_daemon() {
-    assert_eq!(aw!(construct_grasp_daemon()).unwrap(), ());
-}
 
