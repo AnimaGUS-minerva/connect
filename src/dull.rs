@@ -303,9 +303,11 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<(), String>
                     let sifn = gather_addr_info(&child, stuff).await.unwrap();
 
                     if let Some(lifn) = sifn {
-                        let mut ifn = lifn.lock().await;
-                        let gd = Arc::new(Mutex::new(GraspDaemon::initdaemon(ifn.linklocal6, ifn.ifindex).await.unwrap()));
-                        ifn.grasp_daemon = Some(gd.clone());
+                        let gd = Arc::new(Mutex::new(GraspDaemon::initdaemon(lifn.clone()).await.unwrap()));
+                        {
+                            let mut ifn = lifn.lock().await;
+                            ifn.grasp_daemon = Some(gd.clone());
+                        }
 
                         GraspDaemon::start_loop(gd, child.clone()).await;
                     }

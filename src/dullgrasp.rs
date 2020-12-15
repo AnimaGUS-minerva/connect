@@ -28,20 +28,24 @@ use std::sync::Arc;
 use futures::lock::Mutex;
 
 use cbor::decoder::decode as cbor_decode;
-use crate::dull::{IfIndex,DullChild};
+use crate::dull::{DullChild,DullInterface};
 use crate::grasp;
 use crate::grasp::GraspMessage;
 
 #[derive(Debug)]
 pub struct GraspDaemon {
-    pub addr:    Ipv6Addr,
+    pub dullif:       Arc<Mutex<DullInterface>>,
+    pub addr:         Ipv6Addr,
     pub recv_socket:  tokio::net::udp::RecvHalf,
     pub send_socket:  tokio::net::udp::SendHalf
 }
 
 impl GraspDaemon {
-    pub async fn initdaemon(llv6: Ipv6Addr, ifindex: IfIndex) -> Result<GraspDaemon, Error> {
+    pub async fn initdaemon(lifn: Arc<Mutex<DullInterface>>) -> Result<GraspDaemon, Error> {
 
+        let ifn  = lifn.lock().await;
+        let llv6 = ifn.linklocal6;
+        let ifindex = ifn.ifindex;
         //let sin6 = SocketAddrV6::new(llv6, GRASP_PORT as u16, 0, ifindex);
         let sin6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED,
                                      grasp::GRASP_PORT as u16, 0, ifindex);
@@ -56,7 +60,8 @@ impl GraspDaemon {
 
         let gp = GraspDaemon { addr: llv6,
                                recv_socket: recv,
-                               send_socket: send
+                               send_socket: send,
+                               dullif: lifn.clone()
         };
 
         return Ok(gp)
@@ -109,14 +114,32 @@ impl GraspDaemon {
         }
     }
 
+    pub async fn announce_loop(_gd: Arc<Mutex<GraspDaemon>>,
+                               _dd: Arc<Mutex<DullChild>>) {
+            /*
+        loop {
+            let mut bufbytes = [0u8; 2048];
+            let mflood = GraspMessage::construct_acp_account();
+            GraspMessage::encode_grasp_mflood(cbor);
+        }
+             */
+
+    }
+
     pub async fn start_loop(gd: Arc<Mutex<GraspDaemon>>,
                             dd: Arc<Mutex<DullChild>>) {
 
         let child3  = dd.clone();
         let runtime = dd.lock().await.runtime.clone();
+        let gd3     = gd.clone();
 
         runtime.spawn(async move {
-            GraspDaemon::read_loop(gd, child3).await;
+            GraspDaemon::read_loop(gd3, child3).await;
+        });
+
+        let child4  = dd.clone();
+        runtime.spawn(async move {
+            GraspDaemon::announce_loop(gd, child4).await;
         });
     }
 
@@ -125,6 +148,7 @@ impl GraspDaemon {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dull;
 
     macro_rules! aw {
         ($e:expr) => {
@@ -133,9 +157,17 @@ mod tests {
     }
 
     async fn construct_grasp_daemon() -> Result<(), std::io::Error> {
-        let val = "::1".parse::<Ipv6Addr>().unwrap();
+        let mut dd = dull::DullData::empty();
 
-        let _gp = GraspDaemon::initdaemon(val, 0).await;
+        let val = "fe80::11".parse::<Ipv6Addr>().unwrap();
+        let ifindex = 1;
+        let lifn = dd.get_entry_by_ifindex(ifindex).await;
+        {
+            let mut ifn  = lifn.lock().await;
+            ifn.linklocal6 = val;
+        }
+
+        let _gp = GraspDaemon::initdaemon(lifn.clone()).await;
         Ok(())
     }
 
