@@ -221,13 +221,13 @@ fn decode_objective(ctobjpair: &Vec<CborType>) -> Result<GraspObjective, Connect
 fn decode_objectives(objectives: &[CborType]) -> Result<Vec<GraspObjective>, ConnectError> {
     let mut object_vec = Vec::<GraspObjective>::new();
     let mut objerror = None;
-    let mut objcount = 0;
+    let mut _objcount = 0;
 
     for stuff in objectives {
-        objcount += 1;
+        _objcount += 1;
         match stuff {
             CborType::Array(objective) => {
-                println!("{} len: {} objectives: {:?}", objcount, objective.len(), objective);
+                //println!("{} len: {} objectives: {:?}", objcount, objective.len(), objective);
 
                 if objective.len() < 2 {
                     objerror = Some(Err(ConnectError::MisformedGraspObjective));

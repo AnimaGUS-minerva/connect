@@ -98,6 +98,7 @@ pub struct DullData {
     pub interfaces:    HashMap<u32, Arc<Mutex<DullInterface>>>,
     pub cmd_cnt:       u32,
     pub debug_namespaces:  bool,
+    pub debug_graspdaemon: bool,
     pub handle:        Option<Handle>
 }
 
@@ -105,6 +106,7 @@ impl DullData {
     pub fn empty() -> DullData {
         return DullData { interfaces: HashMap::new(), cmd_cnt: 0,
                           debug_namespaces: false,
+                          debug_graspdaemon: false,
                           handle: None
         }
     }

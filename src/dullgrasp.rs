@@ -27,8 +27,10 @@ use std::net::SocketAddrV6;
 use std::sync::Arc;
 use futures::lock::Mutex;
 
+use cbor::decoder::decode as cbor_decode;
 use crate::dull::{IfIndex,DullChild};
 use crate::grasp;
+use crate::grasp::GraspMessage;
 
 #[derive(Debug)]
 pub struct GraspDaemon {
@@ -65,7 +67,7 @@ impl GraspDaemon {
 
         let _runtime = dd.lock().await.runtime.clone();
         let gdd = gd.clone();
-        let mut cnt = 0;
+        let mut cnt: u32 = 0;
         loop {
             let mut bufbytes = [0u8; 2048];
 
@@ -75,14 +77,35 @@ impl GraspDaemon {
             };
             match results {
                 Ok((size, addr)) => {
-                    println!("{}: grasp daemon read: {} bytes from {}",
-                             cnt, size, addr);
+                    if dd.lock().await.data.lock().await.debug_graspdaemon {
+                        println!("{}: grasp daemon read: {} bytes from {}", cnt, size, addr);
+                    }
+                    let graspmessage = match cbor_decode(&bufbytes) {
+                        Ok(cbor) => {
+                            match GraspMessage::decode_grasp_message(cbor) {
+                                Ok(msg) => msg,
+                                err @ _ => {
+                                    println!("   invalid grasp message: {:?}", err);
+                                    continue;
+                                }
+                            }
+                        },
+                        err @ _ => {
+                            println!("   invalid cbor in message: {:?}", err);
+                            continue;
+                        }
+                    };
+
+                    // now we have a graspmessage which we'll do something with!
+                    println!("{} grasp message: {:?}", cnt, graspmessage);
+
                 }
                 Err(msg) => {
-                    println!("got error: {:?}", msg);
+                    println!("{} grasp read got error: {:?}", cnt, msg);
+                    // deal with socket closed?
                 }
             }
-            cnt+=1;
+            cnt += 1;
         }
     }
 
