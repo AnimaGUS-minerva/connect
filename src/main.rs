@@ -32,6 +32,13 @@ static VERSION: &str = "1.0.0";
 // static mut ARGV: *mut *mut i8 = 0 as *mut *mut i8;
 
 async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: String) -> Result<(), Error> {
+    let mut trusted = handle.link().get().set_name_filter("trusted".to_string()).execute();
+    let trusted_link = match trusted.try_next().await? {
+        Some(link) => link,
+        None => { println!("did not find bridge \"trusted\""); return Ok(()); }
+    };
+    // if no such bridge, then do a macvlan on eth0!
+
     let _result = handle
         .link()
         .add()
@@ -39,6 +46,7 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: String) -> 
         .execute()
         .await
         .map_err(|e| format!("{}", e));
+
 
     let mut dull0 = handle.link().get().set_name_filter(name.clone()).execute();
     if let Some(link) = dull0.try_next().await? {
@@ -56,6 +64,25 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: String) -> 
             .await?;
     } else {
         println!("no link link {} found", "dull0");
+        return Ok(());
+    }
+
+    let mut pull0 = handle.link().get().set_name_filter("pull0".to_string()).execute();
+    if let Some(link) = pull0.try_next().await? {
+        handle
+            .link()
+            .set(link.header.index)
+            .up()
+            .execute()
+            .await?;
+        handle
+            .link()
+            .set(link.header.index)
+            .master(trusted_link.header.index)
+            .execute()
+            .await?;
+    } else {
+        println!("no link link {} found", "pull0");
         return Ok(());
     }
 
