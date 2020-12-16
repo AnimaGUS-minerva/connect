@@ -156,25 +156,29 @@ mod tests {
         };
     }
 
-    async fn construct_grasp_daemon() -> Result<(), std::io::Error> {
+    async fn construct_grasp_daemon(addr: &str) -> Result<GraspDaemon, std::io::Error> {
         let mut dd = dull::DullData::empty();
 
-        let val = "fe80::11".parse::<Ipv6Addr>().unwrap();
-        let ifindex = 1;
+        let val = addr.to_string().parse::<Ipv6Addr>().unwrap();
+        let ifindex = 0;
         let lifn = dd.get_entry_by_ifindex(ifindex).await;
         {
             let mut ifn  = lifn.lock().await;
             ifn.linklocal6 = val;
         }
 
-        let _gp = GraspDaemon::initdaemon(lifn.clone()).await;
+        return GraspDaemon::initdaemon(lifn.clone()).await;
+    }
+
+    async fn send_mflood_message() -> Result<(), std::io::Error> {
+        let _gp = construct_grasp_daemon("fe80::11").await.unwrap();
         Ok(())
     }
 
 
     #[test]
-    fn test_construct_grasp_daemon() {
-        assert_eq!(aw!(construct_grasp_daemon()).unwrap(), ());
+    fn test_send_mflood() {
+        aw!(send_mflood_message()).unwrap();
     }
 }
 

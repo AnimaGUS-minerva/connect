@@ -29,16 +29,20 @@ pub const IPPROTO_UDP: u16 = 17;
 type SessionID  = u32;
 type Ttl        = u32;  /* miliseconds */
 
-pub const M_NOOP:         u64 = 0;
-pub const M_DISCOVERY:    u64 = 1;
-pub const M_RESPONSE:     u64 = 2;
-pub const M_REQ_NEG:      u64 = 3;
-pub const M_REQ_SYN:      u64 = 4;
-pub const M_NEGOTIATE:    u64 = 5;
-pub const M_END:          u64 = 6;
-pub const M_WAIT:         u64 = 7;
-pub const M_SYNCH:        u64 = 8;
-pub const M_FLOOD:        u64 = 9;
+#[allow(non_camel_case_types)]
+#[derive(Debug, PartialEq)]
+pub enum GraspMessageType {
+    M_NOOP = 0,
+    M_DISCOVERY = 1,
+    M_RESPONSE =  2,
+    M_REQ_NEG =   3,
+    M_REQ_SYN =   4,
+    M_NEGOTIATE = 5,
+    M_END =       6,
+    M_WAIT =      7,
+    M_SYNCH =     8,
+    M_FLOOD =     9
+}
 pub const M_INVALID:      u64 = 99;
 pub const O_DIVERT:       u64 = 100;
 pub const O_ACCEPT:       u64 = 101;
@@ -47,6 +51,11 @@ pub const O_IPV6_LOCATOR: u64 = 103;
 pub const O_IPV4_LOCATOR: u64 = 104;
 pub const O_FQDN_LOCATOR: u64 = 105;
 pub const O_URI_LOCATOR:  u64 = 106;
+
+pub const F_DISC: u32 = 1 << 0;     // valid for discovery
+pub const F_NEG:  u32 = 1 << 1;     // valid for negotiation
+pub const F_SYNC: u32 = 1 << 2;     // valid for synchronization
+pub const F_NEG_DRY: u32 = 1 << 3;  // negotiation is dry-run
 
 
 #[allow(non_camel_case_types)]
@@ -71,19 +80,13 @@ pub struct GraspObjective {
     locator: Option<GraspLocator>
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq)]
-pub enum GraspMessage {
-    M_NOOP,
-    M_DISCOVERY,
-    M_RESPONSE,
-    M_REQ_NEG,
-    M_REQ_SYN,
-    M_NEGOTIATE,
-    M_END,
-    M_WAIT,
-    M_SYNCH,
-    M_FLOOD { session_id: SessionID, initiator: Ipv6Addr, ttl: Ttl, objectives: Vec<GraspObjective> },
+pub struct GraspMessage {
+    pub mtype:      GraspMessageType,
+    pub session_id: SessionID,
+    pub initiator:  Ipv6Addr,
+    pub ttl:        Ttl,
+    pub objectives: Vec<GraspObjective>
 }
 
 fn decode_ipv6_bytes(bytes: &Vec<u8>) -> Result<Ipv6Addr, ConnectError> {
@@ -275,9 +278,31 @@ fn decode_base_grasp(contents: &Vec<CborType>) -> Result<(u32, u32), ConnectErro
     Ok((msgtype, session_id))
 }
 
+/* this is dumb, but rust does not let one have distinguished unions which also have explicit values */
+fn encode_grasp_mtype(msg: &GraspMessage) -> u64 {
+    match msg.mtype {
+        GraspMessageType::M_NOOP => 0,
+        GraspMessageType::M_DISCOVERY => 1,
+        GraspMessageType::M_RESPONSE  => 2,
+        GraspMessageType::M_REQ_NEG   => 3,
+        GraspMessageType::M_REQ_SYN   => 4,
+        GraspMessageType::M_NEGOTIATE => 5,
+        GraspMessageType::M_END       => 6,
+        GraspMessageType::M_WAIT      => 7,
+        GraspMessageType::M_SYNCH     => 8,
+        GraspMessageType::M_FLOOD     => 9
+    }
+}
+
 impl GraspMessage {
-    fn decode_grasp_noop(_session_id: SessionID, _contents: &Vec<CborType>) -> Result<GraspMessage, ConnectError> {
-        Ok(GraspMessage::M_NOOP)
+    fn decode_grasp_noop(session_id: SessionID, _contents: &Vec<CborType>) -> Result<GraspMessage, ConnectError> {
+        Ok(GraspMessage {
+            mtype: GraspMessageType::M_NOOP,
+            session_id: session_id,
+            ttl: 0,
+            initiator: Ipv6Addr::UNSPECIFIED,
+            objectives: vec![]
+        })
     }
 
     fn decode_grasp_discovery(_session_id: SessionID, _contents: &Vec<CborType>) -> Result<GraspMessage, ConnectError> {
@@ -327,10 +352,11 @@ impl GraspMessage {
 
         let objectives = decode_objectives(&contents[4..])?;
 
-        Ok(GraspMessage::M_FLOOD { session_id: session_id,
-                                   initiator: initiator,
-                                   ttl: (ttl & 0xffffffff) as u32,
-                                   objectives: objectives })
+        Ok(GraspMessage { mtype: GraspMessageType::M_FLOOD,
+                          session_id: session_id,
+                          initiator: initiator,
+                          ttl: (ttl & 0xffffffff) as u32,
+                          objectives: objectives })
     }
 
     pub fn decode_grasp_message(thing: CborType) -> Result<GraspMessage, ConnectError> {
@@ -367,6 +393,13 @@ impl GraspMessage {
             },
             _ => return Err(ConnectError::MisformedGraspMessage)
         }
+    }
+
+    pub fn encode_dull_grasp_message(msg: GraspMessage) -> Result<CborType, ConnectError> {
+        let mtype = encode_grasp_mtype(&msg);
+        let msg = CborType::Array(vec![CborType::Integer(mtype),
+                                       CborType::Integer(msg.session_id as u64)]);
+        Ok(msg)
     }
 
 }
@@ -544,6 +577,30 @@ mod tests {
                                                     objective_value: Some("Goaway!".to_string()),
                                                     locator: exp_locator2 }]));
     }
+
+    #[test]
+    fn test_create_mflood() {
+        let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
+
+        let myhost_locator = GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
+                                                            transport_proto: IPPROTO_UDP,
+                                                            port_number: 500 };
+
+        let flood_obj = GraspObjective { objective_name: "AN_ACP".to_string(),
+                                         objective_flags: F_SYNC,
+                                         loop_count: 1,             // link-local only!
+                                         objective_value: Some("IKEv2".to_string()),
+                                         locator: Some(myhost_locator) };
+
+        let msg = GraspMessage { mtype: GraspMessageType::M_FLOOD,
+                                 session_id: 14,
+                                 initiator: expectv6,
+                                 ttl: 1,
+                                 objectives: vec![flood_obj] };
+
+        let _cbor = GraspMessage::encode_dull_grasp_message(msg).unwrap();
+    }
+
 }
 
 

@@ -28,6 +28,7 @@ futures-sink  = "*"
 gag           = "*"
 libc          = "*"
 custom_error  = "*"
+rand          = "*"
 
 [dev-dependencies]
 tokio-test    = "0.2"
