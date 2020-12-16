@@ -47,6 +47,7 @@ pub const M_INVALID:      u64 = 99;
 pub const O_DIVERT:       u64 = 100;
 pub const O_ACCEPT:       u64 = 101;
 pub const O_DECLINE:      u64 = 102;
+
 pub const O_IPV6_LOCATOR: u64 = 103;
 pub const O_IPV4_LOCATOR: u64 = 104;
 pub const O_FQDN_LOCATOR: u64 = 105;
@@ -61,13 +62,9 @@ pub const F_NEG_DRY: u32 = 1 << 3;  // negotiation is dry-run
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq)]
 enum GraspLocator {
-    #[allow(dead_code)]
     O_IPv6_LOCATOR { v6addr: Ipv6Addr, transport_proto: u16, port_number: u16},  /* 103 */
-    #[allow(dead_code)]
     O_IPv4_LOCATOR { v4addr: Ipv4Addr, transport_proto: u16, port_number: u16},  /* 104 */
-    #[allow(dead_code)]
     O_FQDN_LOCATOR { fqdn: String, transport_proto: u16, port_number: u16 },     /* 105 */
-    #[allow(dead_code)]
     O_URI_LOCATOR  { uri: String, transport_proto: u16, port_number: u16 }       /* 106 */
 }
 
@@ -294,6 +291,49 @@ fn encode_grasp_mtype(msg: &GraspMessage) -> u64 {
     }
 }
 
+fn encode_grasp_locator(loc: &GraspLocator) -> CborType {
+    match loc {
+        GraspLocator::O_IPv6_LOCATOR { v6addr, transport_proto, port_number} => {
+            CborType::Array(vec![CborType::Integer(O_IPV6_LOCATOR),
+                                 CborType::Bytes(v6addr.octets().to_vec()),
+                                 CborType::Integer(*transport_proto as u64),
+                                 CborType::Integer(*port_number as u64)])
+        },
+        GraspLocator::O_IPv4_LOCATOR { v4addr, transport_proto, port_number} => {
+            CborType::Array(vec![CborType::Integer(O_IPV4_LOCATOR),
+                                 CborType::Bytes(v4addr.octets().to_vec()),
+                                 CborType::Integer(*transport_proto as u64),
+                                 CborType::Integer(*port_number as u64)])
+        },
+        GraspLocator::O_FQDN_LOCATOR { fqdn, transport_proto, port_number}   => {
+            CborType::Array(vec![CborType::Integer(O_FQDN_LOCATOR),
+                                 CborType::String(fqdn.to_string()),
+                                 CborType::Integer(*transport_proto as u64),
+                                 CborType::Integer(*port_number as u64)])
+        },
+        GraspLocator::O_URI_LOCATOR  { uri, transport_proto, port_number }   => {
+            CborType::Array(vec![CborType::Integer(O_URI_LOCATOR),
+                                 CborType::String(uri.to_string()),
+                                 CborType::Integer(*transport_proto as u64),
+                                 CborType::Integer(*port_number as u64)])
+        },
+    }
+}
+
+fn encode_grasp_objective(obj: &GraspObjective) -> CborType {
+    let mut objbase = vec![CborType::String(obj.objective_name.clone()),
+                           CborType::Integer(obj.objective_flags as u64),
+                           CborType::Integer(obj.loop_count as u64)];
+    if let Some(value) = &obj.objective_value {
+        objbase.push(CborType::String(value.to_string()));
+    }
+    let mut objv = vec![CborType::Array(objbase)];
+    if let Some(locator) = &obj.locator {
+        objv.push(encode_grasp_locator(locator));
+    }
+    CborType::Array(objv)
+}
+
 impl GraspMessage {
     fn decode_grasp_noop(session_id: SessionID, _contents: &Vec<CborType>) -> Result<GraspMessage, ConnectError> {
         Ok(GraspMessage {
@@ -397,8 +437,14 @@ impl GraspMessage {
 
     pub fn encode_dull_grasp_message(msg: GraspMessage) -> Result<CborType, ConnectError> {
         let mtype = encode_grasp_mtype(&msg);
-        let msg = CborType::Array(vec![CborType::Integer(mtype),
-                                       CborType::Integer(msg.session_id as u64)]);
+        let mut msgvec = vec![CborType::Integer(mtype),
+                          CborType::Integer(msg.session_id as u64),
+                          CborType::Bytes(msg.initiator.octets().to_vec()),
+                          CborType::Integer(msg.ttl as u64)];
+        for obj in msg.objectives {
+            msgvec.push(encode_grasp_objective(&obj));
+        }
+        let msg = CborType::Array(msgvec);
         Ok(msg)
     }
 
@@ -408,6 +454,8 @@ impl GraspMessage {
 mod tests {
     use crate::graspsamples;
     use cbor::decoder::decode;
+    use std::fs::File;
+    use std::io::Write;
     use super::*;
 
     #[test]
@@ -431,6 +479,17 @@ mod tests {
         let slice = &s000[(54+8)..];
         assert_eq!(slice[0], 0x85);   /* beginning of array */
         let thing = decode(slice).unwrap();
+        GraspMessage::decode_grasp_message(thing)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_grasp_s01() -> Result<(), ConnectError> {
+        let s001 = &graspsamples::PACKET_S01;
+
+        assert_eq!(s001[0], 0x85);   /* beginning of array */
+        let thing = decode(s001).unwrap();
         GraspMessage::decode_grasp_message(thing)?;
 
         Ok(())
@@ -578,8 +637,16 @@ mod tests {
                                                     locator: exp_locator2 }]));
     }
 
+    fn write_cbortype_to_file(cbor: &CborType, fname: &str) -> Result<(), std::io::Error> {
+        let mut file = File::create(fname)?;
+
+        let bytes = cbor.serialize();
+        file.write_all(&bytes)?;
+        Ok(())
+    }
+
     #[test]
-    fn test_create_mflood() {
+    fn test_create_mflood() -> Result<(), std::io::Error> {
         let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
 
         let myhost_locator = GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
@@ -598,7 +665,36 @@ mod tests {
                                  ttl: 1,
                                  objectives: vec![flood_obj] };
 
-        let _cbor = GraspMessage::encode_dull_grasp_message(msg).unwrap();
+        let cbor  = GraspMessage::encode_dull_grasp_message(msg).unwrap();
+        write_cbortype_to_file(&cbor, "samples/flood1.bin")?;
+
+        let bytes = cbor.serialize();
+        assert_eq!(bytes, graspsamples::PACKET_S01);
+        Ok(())
+    }
+
+    #[test]
+    fn test_locator_encoder() {
+        let l1 = GraspLocator::O_IPv6_LOCATOR { v6addr: "FE80::1122".parse::<Ipv6Addr>().unwrap(),
+                                                transport_proto: IPPROTO_TCP,
+                                                port_number: 1234 };
+        let _cbor1 = encode_grasp_locator(&l1);
+
+        let l2 = GraspLocator::O_IPv4_LOCATOR { v4addr: "10.11.12.14".parse::<Ipv4Addr>().unwrap(),
+                                                transport_proto: IPPROTO_TCP,
+                                                port_number: 4567 };
+        let _cbor2 = encode_grasp_locator(&l2);
+
+        let l3 = GraspLocator::O_FQDN_LOCATOR { fqdn: "grasp.example".to_string(),
+                                                transport_proto: IPPROTO_UDP,
+                                                port_number: 6789 };
+        let _cbor3 = encode_grasp_locator(&l3);
+
+        let l4 = GraspLocator::O_URI_LOCATOR { uri: "http://grasp.example".to_string(),
+                                                transport_proto: IPPROTO_TCP,
+                                                port_number: 8080 };
+        let _cbor4 = encode_grasp_locator(&l4);
+
     }
 
 }
