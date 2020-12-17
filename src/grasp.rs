@@ -61,7 +61,7 @@ pub const F_NEG_DRY: u32 = 1 << 3;  // negotiation is dry-run
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq)]
-enum GraspLocator {
+pub enum GraspLocator {
     O_IPv6_LOCATOR { v6addr: Ipv6Addr, transport_proto: u16, port_number: u16},  /* 103 */
     O_IPv4_LOCATOR { v4addr: Ipv4Addr, transport_proto: u16, port_number: u16},  /* 104 */
     O_FQDN_LOCATOR { fqdn: String, transport_proto: u16, port_number: u16 },     /* 105 */
@@ -70,11 +70,11 @@ enum GraspLocator {
 
 #[derive(Debug, PartialEq)]
 pub struct GraspObjective {
-    objective_name: String,
-    objective_flags: u32,
-    loop_count: u8,
-    objective_value: Option<String>,
-    locator: Option<GraspLocator>
+    pub objective_name: String,
+    pub objective_flags: u32,
+    pub loop_count: u8,
+    pub objective_value: Option<String>,
+    pub locator: Option<GraspLocator>
 }
 
 #[derive(Debug, PartialEq)]

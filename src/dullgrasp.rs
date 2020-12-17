@@ -19,23 +19,28 @@ extern crate nix;
 extern crate tokio;
 extern crate moz_cbor as cbor;
 
-//use nix::unistd::*;
+use nix::unistd::*;
 use std::net::Ipv6Addr;
 use tokio::net::UdpSocket;
 use std::io::Error;
-use std::net::SocketAddrV6;
+use std::net::{SocketAddrV6,SocketAddr};
 use std::sync::Arc;
 use futures::lock::Mutex;
+use rand::Rng;
 
+use cbor::CborType;
 use cbor::decoder::decode as cbor_decode;
+
 use crate::dull::{DullChild,DullInterface};
 use crate::grasp;
-use crate::grasp::GraspMessage;
+use crate::grasp::{GraspMessage, GraspMessageType, IPPROTO_UDP};
+use crate::error::ConnectError;
 
 #[derive(Debug)]
 pub struct GraspDaemon {
     pub dullif:       Arc<Mutex<DullInterface>>,
     pub addr:         Ipv6Addr,
+    pub grasp_dest:   std::net::SocketAddr,
     pub recv_socket:  tokio::net::udp::RecvHalf,
     pub send_socket:  tokio::net::udp::SendHalf
 }
@@ -61,6 +66,7 @@ impl GraspDaemon {
         let gp = GraspDaemon { addr: llv6,
                                recv_socket: recv,
                                send_socket: send,
+                               grasp_dest:  SocketAddr::V6(SocketAddrV6::new(grasp_mcast, grasp::GRASP_PORT as u16, 0, ifindex)),
                                dullif: lifn.clone()
         };
 
@@ -114,15 +120,59 @@ impl GraspDaemon {
         }
     }
 
-    pub async fn announce_loop(_gd: Arc<Mutex<GraspDaemon>>,
-                               _dd: Arc<Mutex<DullChild>>) {
-            /*
+    pub async fn construct_acp_mflood(gd: Arc<Mutex<GraspDaemon>>,
+                                      _dd: Arc<Mutex<DullChild>>) -> Result<CborType, ConnectError>
+    {
+        let myllv6 = {
+            let gdl = gd.lock().await;
+            gdl.addr
+        };
+
+        let mut rng = rand::thread_rng();
+        let sesid = rng.gen::<u32>();
+
+        let ike_locator = grasp::GraspLocator::O_IPv6_LOCATOR { v6addr: myllv6,
+                                                         transport_proto: IPPROTO_UDP,
+                                                         port_number: 500 };
+        let acp_objective =grasp::GraspObjective { objective_name: "AN_ACP".to_string(),
+                                                   objective_flags: grasp::F_SYNC,
+                                                   loop_count: 1,  /* do not leave link */
+                                                   objective_value: Some("IKEv2".to_string()),
+                                                   locator: Some(ike_locator) };
+        let flood = grasp::GraspMessage { mtype: GraspMessageType::M_FLOOD,
+                                          session_id: sesid,
+                                          initiator: myllv6,
+                                          ttl: 1,
+                                          objectives: vec![acp_objective] };
+
+        GraspMessage::encode_dull_grasp_message(flood)
+    }
+
+    pub async fn announce_loop(gd: Arc<Mutex<GraspDaemon>>,
+                               dd: Arc<Mutex<DullChild>>) {
         loop {
-            let mut bufbytes = [0u8; 2048];
-            let mflood = GraspMessage::construct_acp_account();
-            GraspMessage::encode_grasp_mflood(cbor);
+            let mflood = Self::construct_acp_mflood(gd.clone(), dd.clone()).await.unwrap();
+            let bytes = mflood.serialize();
+            let v6mcast = {
+                let gld = gd.lock().await;
+                gld.grasp_dest
+            };
+
+            let _size = {
+                let mut gld = gd.lock().await;
+                gld.send_socket.send_to(&bytes, &v6mcast).await.unwrap();
+            };
+            /*
+            let size = match wsize {
+                Ok(size) => size,
+                _ => { println!("announce error: {:?}", wsize); }
+            };
+            if size != bytes.len() {
+                println!("short write: {}", size);
+            }
+            */
+            sleep(5);
         }
-             */
 
     }
 
