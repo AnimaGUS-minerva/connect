@@ -99,6 +99,7 @@ pub struct DullData {
     pub cmd_cnt:       u32,
     pub debug_namespaces:  bool,
     pub debug_graspdaemon: bool,
+    pub exit_now:          bool,
     pub handle:        Option<Handle>
 }
 
@@ -107,6 +108,7 @@ impl DullData {
         return DullData { interfaces: HashMap::new(), cmd_cnt: 0,
                           debug_namespaces: false,
                           debug_graspdaemon: false,
+                          exit_now:         false,
                           handle: None
         }
     }
@@ -323,12 +325,17 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<(), String>
     Ok(())
 }
 
-pub async fn process_control(_child: Arc<Mutex<DullChild>>, mut child_sock: tokio::net::UnixStream) {
+pub async fn process_control(child: Arc<Mutex<DullChild>>, mut child_sock: tokio::net::UnixStream) {
     loop {
         if let Ok(thing) = control::read_control(&mut child_sock).await {
             match thing {
                 control::DullControl::Exit => {
                     println!("DULL process exiting");
+                    {
+                        let cl = child.lock().await;
+                        let mut dl = cl.data.lock().await;
+                        dl.exit_now = true;
+                    }
                     std::process::exit(0);
                 }
                 control::DullControl::AdminDown { interface_index: ifn } => {

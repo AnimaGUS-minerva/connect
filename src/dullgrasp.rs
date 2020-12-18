@@ -158,6 +158,16 @@ impl GraspDaemon {
                 gld.grasp_dest
             };
 
+            let exitnow = {
+                let dcl = dd.lock().await;
+                let ddl = dcl.data.lock().await;
+                ddl.exit_now
+            };
+
+            if exitnow {
+                std::process::exit(0);
+            }
+
             let _size = {
                 let mut gld = gd.lock().await;
                 gld.send_socket.send_to(&bytes, &v6mcast).await.unwrap();
