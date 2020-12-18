@@ -263,11 +263,12 @@ async fn gather_addr_info(ldull: &Arc<Mutex<DullChild>>, am: AddressMessage) -> 
 pub struct DullChild {
     //pub parent_stream: Arc<tokio::net::UnixStream>,
     pub runtime:       Arc<tokio::runtime::Runtime>,
-    pub data:          Mutex<DullData>
+    pub data:          Mutex<DullData>,
+    pub netlink_handle: Option<tokio::task::JoinHandle<Result<(),Error>>>,
 }
 
 
-async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<(), String> {
+async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task::JoinHandle<Result<(),Error>>, String> {
 
     let child = childinfo.clone();   /* take reference to childinfo, for move below */
     let (rt,rt2) = {
@@ -276,7 +277,7 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<(), String>
     };
 
     /* NETLINK listen_network activity daemon: process it all in the background */
-    rt2.spawn(async move {               // moves _child_, and _rt_ into spawn.
+    let listenhandle = rt2.spawn(async move {               // moves _child_, and _rt_ into spawn.
         // Open the netlink socket
         let (mut connection, handle, mut messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
 
@@ -320,9 +321,10 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<(), String>
                 //_ => { println!("generic message type: {} skipped", payload.message_type()); }
                 _ => { println!("msg type: {:?}", payload); }
             }
-        }
+        };
+        Ok(())
     });
-    Ok(())
+    Ok(listenhandle)
 }
 
 pub async fn process_control(child: Arc<Mutex<DullChild>>, mut child_sock: tokio::net::UnixStream) {
@@ -335,7 +337,16 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>, mut child_sock: tokio
                         let cl = child.lock().await;
                         let mut dl = cl.data.lock().await;
                         dl.exit_now = true;
+
+                        /* abort() supported on 0.3 only :-( */
+                        /*
+                        if let Some(nh) = cl.netlink_handle {
+                            nh.abort();
+                            cl.netlink_handle = None;
+                        };
+                         */
                     }
+                    /* kill self and all threads */
                     std::process::exit(0);
                 }
                 control::DullControl::AdminDown { interface_index: ifn } => {
@@ -381,26 +392,20 @@ pub fn create_netns() -> Result<(), String> {
 async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream) {
     let mut parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
 
-    /*  does not seem to work!
-    let monitor = File::create("monitor.txt").unwrap();
-    // into the background
-    Command::new("ip")
-        .arg("monitor")
-        .stdout(monitor)
-        .spawn()
-        .expect("ls command failed to start");
-     */
-
     /* arrange to listen on network events in the new network namespace */
-    println!("future2");
-    listen_network(&childinfo).await.unwrap();
+    let netlink_handle = listen_network(&childinfo).await.unwrap();
+
+    {
+        let mut cil = childinfo.lock().await;
+        cil.netlink_handle = Some(netlink_handle);
+    }
 
     /* let parent know that we ready */
-    println!("child says it is ready");
+    println!("tell parent, child is ready");
     control::write_child_ready(&mut parent_stream).await.unwrap();
 
     /* listen to commands from the parent */
-    println!("blocking in child");
+    println!("child waiting for commands");
     process_control(childinfo, parent_stream).await;
 }
 
@@ -465,6 +470,7 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
                 .unwrap();
 
             let childinfo = DullChild { runtime:        Arc::new(rt),
+                                        netlink_handle: None,
                                         data:           Mutex::new(DullData::empty()),
             };
 
