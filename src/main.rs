@@ -16,7 +16,8 @@
  */
 use nix::unistd::*;
 use futures::stream::TryStreamExt;
-use rtnetlink::{new_connection, Error, Handle};
+use rtnetlink::{new_connection, Error, Handle, Error::NetlinkError};
+use netlink_packet_route::ErrorMessage;
 use std::io::ErrorKind;
 //use std::os::unix::net::UnixStream;
 
@@ -39,13 +40,20 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: String) -> 
     };
     // if no such bridge, then do a macvlan on eth0!
 
-    let _result = handle
+    let result = handle
         .link()
         .add()
         .veth("dull0".into(), "pull0".into())
         .execute()
-        .await
-        .map_err(|e| format!("{}", e));
+        .await;
+    match result {
+        Err(NetlinkError(ErrorMessage { code: -17, .. })) => { println!("network pair already created"); },
+        Ok(_) => {},
+        _ => {
+            println!("new error: {:?}", result);
+            std::process::exit(0);
+        }
+    };
 
 
     let mut dull0 = handle.link().get().set_name_filter(name.clone()).execute();
@@ -63,7 +71,7 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: String) -> 
             .execute()
             .await?;
     } else {
-        println!("no link link {} found", "dull0");
+        println!("no child link {} found", name);
         return Ok(());
     }
 
