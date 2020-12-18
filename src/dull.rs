@@ -306,13 +306,14 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
                     let sifn = gather_addr_info(&child, stuff).await.unwrap();
 
                     if let Some(lifn) = sifn {
-                        let gd = Arc::new(Mutex::new(GraspDaemon::initdaemon(lifn.clone()).await.unwrap()));
+                        let (bgd, recv, send) = GraspDaemon::initdaemon(lifn.clone()).await.unwrap();
+                        let gd = Arc::new(Mutex::new(bgd));
                         {
                             let mut ifn = lifn.lock().await;
                             ifn.grasp_daemon = Some(gd.clone());
                         }
 
-                        GraspDaemon::start_loop(gd, child.clone()).await;
+                        GraspDaemon::start_loop(gd, recv, send, child.clone()).await;
                     }
                 }
                 InnerMessage(NewRoute(_thing)) => {

@@ -40,13 +40,13 @@ use crate::error::ConnectError;
 pub struct GraspDaemon {
     pub dullif:       Arc<Mutex<DullInterface>>,
     pub addr:         Ipv6Addr,
-    pub grasp_dest:   std::net::SocketAddr,
-    pub recv_socket:  tokio::net::udp::RecvHalf,
-    pub send_socket:  tokio::net::udp::SendHalf
+    pub grasp_dest:   std::net::SocketAddr
 }
 
 impl GraspDaemon {
-    pub async fn initdaemon(lifn: Arc<Mutex<DullInterface>>) -> Result<GraspDaemon, Error> {
+    pub async fn initdaemon(lifn: Arc<Mutex<DullInterface>>) -> Result<(GraspDaemon,
+                                                                        tokio::net::udp::RecvHalf,
+                                                                        tokio::net::udp::SendHalf),Error> {
 
         let ifn  = lifn.lock().await;
         let llv6 = ifn.linklocal6;
@@ -64,28 +64,24 @@ impl GraspDaemon {
         let (recv, send) = sock.split();
 
         let gp = GraspDaemon { addr: llv6,
-                               recv_socket: recv,
-                               send_socket: send,
                                grasp_dest:  SocketAddr::V6(SocketAddrV6::new(grasp_mcast, grasp::GRASP_PORT as u16, 0, ifindex)),
                                dullif: lifn.clone()
         };
 
-        return Ok(gp)
+        return Ok((gp, recv, send))
     }
 
-    pub async fn read_loop(gd: Arc<Mutex<GraspDaemon>>,
-                           dd: Arc<Mutex<DullChild>>) {
+    pub async fn read_loop(_gd: Arc<Mutex<GraspDaemon>>,
+                           dd: Arc<Mutex<DullChild>>,
+                           mut recv: tokio::net::udp::RecvHalf) {
 
         let _runtime = dd.lock().await.runtime.clone();
-        let gdd = gd.clone();
         let mut cnt: u32 = 0;
         loop {
             let mut bufbytes = [0u8; 2048];
 
-            let results = {
-                let mut gdl = gdd.lock().await;
-                gdl.recv_socket.recv_from(&mut bufbytes).await
-            };
+            println!("listening on GRASP socket {:?}", recv);
+            let results = recv.recv_from(&mut bufbytes).await;
             match results {
                 Ok((size, addr)) => {
                     if dd.lock().await.data.lock().await.debug_graspdaemon {
@@ -149,7 +145,8 @@ impl GraspDaemon {
     }
 
     pub async fn announce_loop(gd: Arc<Mutex<GraspDaemon>>,
-                               dd: Arc<Mutex<DullChild>>) {
+                               dd: Arc<Mutex<DullChild>>,
+                               mut send: tokio::net::udp::SendHalf) {
         loop {
             let mflood = Self::construct_acp_mflood(gd.clone(), dd.clone()).await.unwrap();
             let bytes = mflood.serialize();
@@ -168,10 +165,7 @@ impl GraspDaemon {
                 std::process::exit(0);
             }
 
-            let _size = {
-                let mut gld = gd.lock().await;
-                gld.send_socket.send_to(&bytes, &v6mcast).await.unwrap();
-            };
+            send.send_to(&bytes, &v6mcast).await.unwrap();
             /*
             let size = match wsize {
                 Ok(size) => size,
@@ -187,6 +181,8 @@ impl GraspDaemon {
     }
 
     pub async fn start_loop(gd: Arc<Mutex<GraspDaemon>>,
+                            recv: tokio::net::udp::RecvHalf,
+                            send: tokio::net::udp::SendHalf,
                             dd: Arc<Mutex<DullChild>>) {
 
         let child3  = dd.clone();
@@ -194,12 +190,12 @@ impl GraspDaemon {
         let gd3     = gd.clone();
 
         runtime.spawn(async move {
-            GraspDaemon::read_loop(gd3, child3).await;
+            GraspDaemon::read_loop(gd3, child3, recv).await;
         });
 
         let child4  = dd.clone();
         runtime.spawn(async move {
-            GraspDaemon::announce_loop(gd, child4).await;
+            GraspDaemon::announce_loop(gd, child4, send).await;
         });
     }
 
@@ -227,7 +223,8 @@ mod tests {
             ifn.linklocal6 = val;
         }
 
-        return GraspDaemon::initdaemon(lifn.clone()).await;
+        let (gd, _, _) = GraspDaemon::initdaemon(lifn.clone()).await.unwrap();
+        return Ok(gd);
     }
 
     async fn send_mflood_message() -> Result<(), std::io::Error> {
