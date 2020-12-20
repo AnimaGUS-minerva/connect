@@ -14,11 +14,12 @@
    limitations under the License.
  *
  */
-use nix::unistd::*;
+
 use futures::stream::TryStreamExt;
 use rtnetlink::{new_connection, Error, Handle, Error::NetlinkError};
 use netlink_packet_route::ErrorMessage;
 use std::io::ErrorKind;
+use tokio::time::{delay_for, Duration};
 //use std::os::unix::net::UnixStream;
 
 pub mod dull;
@@ -138,8 +139,8 @@ async fn parent(rt: &tokio::runtime::Runtime, dullinit: dull::DullInit) -> Resul
 
     //println!("created dull0");
 
-    /* now shutdown the child */
-    sleep(200);
+    /* now shutdown the child after the delay */
+    delay_for(Duration::from_millis(200000)).await;
     exit_child(&mut dull).await;
 
     println!("child shutdown");

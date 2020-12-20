@@ -19,9 +19,10 @@ extern crate nix;
 extern crate tokio;
 extern crate moz_cbor as cbor;
 
-use nix::unistd::*;
+//use nix::unistd::*;
 use std::net::Ipv6Addr;
 use tokio::net::UdpSocket;
+use tokio::time::{delay_for, Duration};
 use std::io::Error;
 use std::net::{SocketAddrV6,SocketAddr};
 use std::sync::Arc;
@@ -45,23 +46,25 @@ pub struct GraspDaemon {
 
 impl GraspDaemon {
     pub async fn initdaemon(lifn: Arc<Mutex<DullInterface>>) -> Result<(GraspDaemon,
-                                                                        tokio::net::udp::RecvHalf,
-                                                                        tokio::net::udp::SendHalf),Error> {
+                                                                        tokio::net::UdpSocket,
+                                                                        tokio::net::UdpSocket),Error> {
 
         let ifn  = lifn.lock().await;
         let llv6 = ifn.linklocal6;
         let ifindex = ifn.ifindex;
         //let sin6 = SocketAddrV6::new(llv6, GRASP_PORT as u16, 0, ifindex);
-        let sin6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED,
+        let rsin6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED,
                                      grasp::GRASP_PORT as u16, 0, ifindex);
 
-        let sock = UdpSocket::bind(sin6).await.unwrap();
+        let recv = UdpSocket::bind(rsin6).await.unwrap();
 
         // join it to a multicast group
         let grasp_mcast = "FF02:0:0:0:0:0:0:13".parse::<Ipv6Addr>().unwrap();
-        sock.join_multicast_v6(&grasp_mcast, ifindex).unwrap();
+        recv.join_multicast_v6(&grasp_mcast, ifindex).unwrap();
 
-        let (recv, send) = sock.split();
+        let ssin6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED,
+                                      0 as u16, 0, ifindex);
+        let send = UdpSocket::bind(ssin6).await.unwrap();
 
         let gp = GraspDaemon { addr: llv6,
                                grasp_dest:  SocketAddr::V6(SocketAddrV6::new(grasp_mcast, grasp::GRASP_PORT as u16, 0, ifindex)),
@@ -73,10 +76,15 @@ impl GraspDaemon {
 
     pub async fn read_loop(_gd: Arc<Mutex<GraspDaemon>>,
                            dd: Arc<Mutex<DullChild>>,
-                           mut recv: tokio::net::udp::RecvHalf) {
+                           mut recv: tokio::net::UdpSocket /*tokio::net::udp::RecvHalf*/) {
 
-        let _runtime = dd.lock().await.runtime.clone();
+        //let _runtime = { dd.lock().await.runtime.clone() };
         let mut cnt: u32 = 0;
+
+        println!("fetching debug");
+        let debug_graspdaemon = {
+            dd.lock().await.data.lock().await.debug_graspdaemon
+        };
         loop {
             let mut bufbytes = [0u8; 2048];
 
@@ -84,7 +92,7 @@ impl GraspDaemon {
             let results = recv.recv_from(&mut bufbytes).await;
             match results {
                 Ok((size, addr)) => {
-                    if dd.lock().await.data.lock().await.debug_graspdaemon {
+                    if debug_graspdaemon {
                         println!("{}: grasp daemon read: {} bytes from {}", cnt, size, addr);
                     }
                     let graspmessage = match cbor_decode(&bufbytes) {
@@ -146,14 +154,14 @@ impl GraspDaemon {
 
     pub async fn announce_loop(gd: Arc<Mutex<GraspDaemon>>,
                                dd: Arc<Mutex<DullChild>>,
-                               mut send: tokio::net::udp::SendHalf) {
+                               mut send: tokio::net::UdpSocket /*tokio::net::udp::SendHalf*/) {
+        let v6mcast = {
+            let gld = gd.lock().await;
+            gld.grasp_dest
+        };
         loop {
             let mflood = Self::construct_acp_mflood(gd.clone(), dd.clone()).await.unwrap();
             let bytes = mflood.serialize();
-            let v6mcast = {
-                let gld = gd.lock().await;
-                gld.grasp_dest
-            };
 
             let exitnow = {
                 let dcl = dd.lock().await;
@@ -175,28 +183,31 @@ impl GraspDaemon {
                 println!("short write: {}", size);
             }
             */
-            sleep(5);
+            delay_for(Duration::from_millis(5000)).await;
         }
 
     }
 
     pub async fn start_loop(gd: Arc<Mutex<GraspDaemon>>,
-                            recv: tokio::net::udp::RecvHalf,
-                            send: tokio::net::udp::SendHalf,
+                            recv: /*tokio::net::udp::RecvHalf*/ tokio::net::UdpSocket,
+                            send: /*tokio::net::udp::SendHalf*/ tokio::net::UdpSocket,
                             dd: Arc<Mutex<DullChild>>) {
 
         let child3  = dd.clone();
-        let runtime = dd.lock().await.runtime.clone();
+        let child4  = dd.clone();
         let gd3     = gd.clone();
+        let gd4     = gd.clone();
+
+        let runtime = dd.lock().await.runtime.clone();
+
+        runtime.spawn(async move {
+            GraspDaemon::announce_loop(gd4, child4, send).await;
+        });
 
         runtime.spawn(async move {
             GraspDaemon::read_loop(gd3, child3, recv).await;
         });
 
-        let child4  = dd.clone();
-        runtime.spawn(async move {
-            GraspDaemon::announce_loop(gd, child4, send).await;
-        });
     }
 
 }
