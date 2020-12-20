@@ -645,8 +645,7 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_create_mflood() -> Result<(), std::io::Error> {
+    fn create_mflood() -> GraspMessage {
         let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
 
         let myhost_locator = GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
@@ -664,7 +663,13 @@ mod tests {
                                  initiator: expectv6,
                                  ttl: 1,
                                  objectives: vec![flood_obj] };
+        msg
+    }
 
+    #[test]
+    fn test_create_mflood() -> Result<(), std::io::Error> {
+
+        let msg   = create_mflood();
         let cbor  = GraspMessage::encode_dull_grasp_message(msg).unwrap();
         write_cbortype_to_file(&cbor, "samples/flood1.bin")?;
 

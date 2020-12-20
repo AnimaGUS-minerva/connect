@@ -26,6 +26,7 @@ use std::sync::Arc;
 use crate::control;
 use crate::dullgrasp;
 use crate::dullgrasp::GraspDaemon;
+use crate::adjacency::Adjacency;
 
 use nix::unistd::*;
 use nix::sched::unshare;
@@ -91,7 +92,22 @@ pub struct DullInterface {
     pub mtu:           u32,
     pub linklocal6:    Ipv6Addr,
     pub oper_state:    State,
-    pub grasp_daemon:  Option<Arc<Mutex<dullgrasp::GraspDaemon>>>
+    pub grasp_daemon:  Option<Arc<Mutex<dullgrasp::GraspDaemon>>>,
+    pub adjacencies:   HashMap<Ipv6Addr, Arc<Adjacency>>
+}
+
+impl DullInterface {
+    pub fn empty(ifi: IfIndex) -> DullInterface {
+        DullInterface {
+            ifindex: ifi,
+            ifname:  "".to_string(),
+            mtu:     0,
+            linklocal6: Ipv6Addr::UNSPECIFIED,
+            oper_state: State::Down,
+            grasp_daemon: None,
+            adjacencies:  HashMap::new()
+        }
+    }
 }
 
 pub struct DullData {
@@ -114,15 +130,7 @@ impl DullData {
     }
 
     pub async fn get_entry_by_ifindex(self: &mut DullData, ifindex: IfIndex) -> &Arc<Mutex<DullInterface>> {
-        let ifnl = self.interfaces.entry(ifindex).or_insert_with(|| { Arc::new(Mutex::new(DullInterface {
-            ifindex: ifindex,
-            ifname:  "".to_string(),
-            mtu:     0,
-            linklocal6: Ipv6Addr::UNSPECIFIED,
-            oper_state: State::Down,
-            grasp_daemon: None
-        }))});
-
+        let ifnl = self.interfaces.entry(ifindex).or_insert_with(|| { Arc::new(Mutex::new(DullInterface::empty(ifindex)))});
         return ifnl;
     }
 

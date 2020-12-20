@@ -114,6 +114,7 @@ impl GraspDaemon {
                     // now we have a graspmessage which we'll do something with!
                     println!("{} grasp message: {:?}", cnt, graspmessage);
 
+
                 }
                 Err(msg) => {
                     println!("{} grasp read got error: {:?}", cnt, msg);
