@@ -36,6 +36,7 @@ use crate::dull::{DullChild,DullInterface};
 use crate::grasp;
 use crate::grasp::{GraspMessage, GraspMessageType, IPPROTO_UDP};
 use crate::error::ConnectError;
+use crate::adjacency::Adjacency;
 
 #[derive(Debug)]
 pub struct GraspDaemon {
@@ -74,7 +75,7 @@ impl GraspDaemon {
         return Ok((gp, recv, send))
     }
 
-    pub async fn read_loop(_gd: Arc<Mutex<GraspDaemon>>,
+    pub async fn read_loop(gd: Arc<Mutex<GraspDaemon>>,
                            dd: Arc<Mutex<DullChild>>,
                            mut recv: tokio::net::UdpSocket /*tokio::net::udp::RecvHalf*/) {
 
@@ -114,7 +115,22 @@ impl GraspDaemon {
                     // now we have a graspmessage which we'll do something with!
                     println!("{} grasp message: {:?}", cnt, graspmessage);
 
+                    {
+                        let gdl = gd.lock().await;
+                        let mut dil = gdl.dullif.lock().await;
 
+                        /* insert into list of edges */
+                        let sadj = Adjacency::adjacency_from_mflood(gdl.dullif.clone(), graspmessage);
+                        if let Some(adj) = sadj {
+                            let ladj = dil.adjacencies.entry(adj.v6addr).or_insert_with(|| {
+                                Arc::new(Mutex::new(adj))
+                            });
+
+                            /* now mark the adj as trying to be up */
+                            let mut adj = ladj.lock().await;
+                            adj.increment();
+                        }
+                    }
                 }
                 Err(msg) => {
                     println!("{} grasp read got error: {:?}", cnt, msg);
@@ -160,7 +176,9 @@ impl GraspDaemon {
             let gld = gd.lock().await;
             gld.grasp_dest
         };
+        let mut loops = 0;
         loop {
+            loops += 1;
             let mflood = Self::construct_acp_mflood(gd.clone(), dd.clone()).await.unwrap();
             let bytes = mflood.serialize();
 
@@ -185,6 +203,20 @@ impl GraspDaemon {
             }
             */
             delay_for(Duration::from_millis(5000)).await;
+            if (loops % 12) == 0 {
+                /* every minutes, print out the list of all adjancies */
+                let gdl = gd.lock().await;
+                let dil = gdl.dullif.lock().await;
+
+                let mut num = 0;
+                println!("Interface #{} {} [{}]", dil.ifindex, dil.ifname, dil.linklocal6);
+                for (_if6, ladj) in &dil.adjacencies {
+                    let adj = ladj.lock().await;
+                    println!("   {}: {:?}", num, adj);
+                    num += 1;
+                };
+
+            }
         }
 
     }

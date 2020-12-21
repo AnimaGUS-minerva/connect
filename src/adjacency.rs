@@ -19,6 +19,7 @@ extern crate nix;
 extern crate tokio;
 use std::sync::Arc;
 use std::net::Ipv6Addr;
+use std::fmt;
 use futures::lock::Mutex;
 
 use crate::dull::DullInterface;
@@ -29,7 +30,16 @@ pub struct Adjacency {
     pub interface:     Arc<Mutex<DullInterface>>,
     pub v6addr:        Ipv6Addr,
     pub ikeport:       u16,
+    pub advertisement_count:      u32,
     pub tunnelup:      bool
+}
+
+impl fmt::Display for Adjacency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let updown = if self.tunnelup { "tun-up" } else { "tun-down" };
+        write!(f, "cnt:{:05} v6:[{}]:{}  {}",
+               self.advertisement_count, self.v6addr, self.ikeport, updown)
+    }
 }
 
 impl Adjacency {
@@ -37,7 +47,12 @@ impl Adjacency {
         Adjacency { interface: di.clone(),
                     v6addr:    Ipv6Addr::UNSPECIFIED,
                     ikeport:   0,
+                    advertisement_count: 0,
                     tunnelup:  false }
+    }
+
+    pub fn increment(self: &mut Adjacency) {
+        self.advertisement_count += 1;
     }
 
     pub fn adjacency_from_mflood(di: Arc<Mutex<DullInterface>>,
@@ -45,7 +60,7 @@ impl Adjacency {
 
         for obj in gm.objectives {
             if obj.objective_name != "AN_ACP" { continue; }
-            if !obj.is_sync()                  { continue; }
+            if !obj.is_sync()                 { continue; }
             if obj.loop_count !=1             { continue; }
             if let Some(val) = obj.objective_value {
                 if val != "IKEv2"             { continue; }
@@ -56,6 +71,7 @@ impl Adjacency {
                         return Some(Adjacency { interface: di.clone(),
                                                 v6addr:    v6addr,
                                                 ikeport:   port_number,
+                                                advertisement_count: 0,
                                                 tunnelup:  false })
                     }
                     _ => { continue; }
@@ -77,7 +93,8 @@ mod tests {
     fn test_adding_adjacency() {
         let di = DullInterface::empty(1);
         let amdi = Arc::new(Mutex::new(di));
-        let _ad = Adjacency::adjacency_from_mflood(amdi, grasp::tests::create_mflood()).unwrap();
+        let ad = Adjacency::adjacency_from_mflood(amdi, grasp::tests::create_mflood()).unwrap();
+        println!("mflood: {}", ad);
     }
 }
 

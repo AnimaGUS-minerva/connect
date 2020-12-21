@@ -93,7 +93,7 @@ pub struct DullInterface {
     pub linklocal6:    Ipv6Addr,
     pub oper_state:    State,
     pub grasp_daemon:  Option<Arc<Mutex<dullgrasp::GraspDaemon>>>,
-    pub adjacencies:   HashMap<Ipv6Addr, Arc<Adjacency>>
+    pub adjacencies:   HashMap<Ipv6Addr, Arc<Mutex<Adjacency>>>
 }
 
 impl DullInterface {
