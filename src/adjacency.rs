@@ -22,6 +22,7 @@ use std::net::Ipv6Addr;
 use futures::lock::Mutex;
 
 use crate::dull::DullInterface;
+use crate::grasp;
 
 #[derive(Debug)]
 pub struct Adjacency {
@@ -38,6 +39,33 @@ impl Adjacency {
                     ikeport:   0,
                     tunnelup:  false }
     }
+
+    pub fn adjacency_from_mflood(di: Arc<Mutex<DullInterface>>,
+                               gm: grasp::GraspMessage) -> Option<Adjacency> {
+
+        for obj in gm.objectives {
+            if obj.objective_name != "AN_ACP" { continue; }
+            if !obj.is_sync()                  { continue; }
+            if obj.loop_count !=1             { continue; }
+            if let Some(val) = obj.objective_value {
+                if val != "IKEv2"             { continue; }
+            } else                            { continue; }
+            if let Some(loc1) = obj.locator {
+                match loc1 {
+                    grasp::GraspLocator::O_IPv6_LOCATOR { v6addr, transport_proto: grasp::IPPROTO_UDP, port_number } => {
+                        return Some(Adjacency { interface: di.clone(),
+                                                v6addr:    v6addr,
+                                                ikeport:   port_number,
+                                                tunnelup:  false })
+                    }
+                    _ => { continue; }
+                }
+            }
+        }
+
+        return None;
+    }
+
 }
 
 
@@ -45,17 +73,11 @@ impl Adjacency {
 mod tests {
     use super::*;
 
-    macro_rules! aw {
-        ($e:expr) => {
-            tokio_test::block_on($e)
-        };
-    }
-
     #[test]
     fn test_adding_adjacency() {
         let di = DullInterface::empty(1);
-        let _ad = Adjacency::empty(Arc::new(Mutex::new(di)));
-
+        let amdi = Arc::new(Mutex::new(di));
+        let _ad = Adjacency::adjacency_from_mflood(amdi, grasp::tests::create_mflood()).unwrap();
     }
 }
 

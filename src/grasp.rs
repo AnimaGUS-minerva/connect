@@ -77,6 +77,12 @@ pub struct GraspObjective {
     pub locator: Option<GraspLocator>
 }
 
+impl GraspObjective {
+    pub fn is_sync(self: &GraspObjective) -> bool {
+        (self.objective_flags & F_SYNC) == F_SYNC
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct GraspMessage {
     pub mtype:      GraspMessageType,
@@ -451,7 +457,7 @@ impl GraspMessage {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use crate::graspsamples;
     use cbor::decoder::decode;
     use std::fs::File;
@@ -645,7 +651,7 @@ mod tests {
         Ok(())
     }
 
-    fn create_mflood() -> GraspMessage {
+    pub fn create_mflood() -> GraspMessage {
         let expectv6 = "FE80::1122".parse::<Ipv6Addr>().unwrap();
 
         let myhost_locator = GraspLocator::O_IPv6_LOCATOR { v6addr: expectv6,
