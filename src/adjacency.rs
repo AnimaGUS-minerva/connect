@@ -20,7 +20,7 @@ extern crate tokio;
 use std::sync::Arc;
 use std::net::Ipv6Addr;
 use std::fmt;
-use futures::lock::Mutex;
+use futures::lock::{Mutex};
 
 use crate::dull::DullInterface;
 use crate::grasp;

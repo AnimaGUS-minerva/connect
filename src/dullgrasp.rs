@@ -89,7 +89,9 @@ impl GraspDaemon {
         loop {
             let mut bufbytes = [0u8; 2048];
 
-            println!("listening on GRASP socket {:?}", recv);
+            if debug_graspdaemon {
+                println!("listening on GRASP socket {:?}", recv);
+            }
             let results = recv.recv_from(&mut bufbytes).await;
             match results {
                 Ok((size, addr)) => {
@@ -209,10 +211,10 @@ impl GraspDaemon {
                 let dil = gdl.dullif.lock().await;
 
                 let mut num = 0;
-                println!("Interface #{} {} [{}]", dil.ifindex, dil.ifname, dil.linklocal6);
+                println!("\nInterface #{} {} [{}]", dil.ifindex, dil.ifname, dil.linklocal6);
                 for (_if6, ladj) in &dil.adjacencies {
                     let adj = ladj.lock().await;
-                    println!("   {}: {:?}", num, adj);
+                    println!("   {}: {}", num, *adj);
                     num += 1;
                 };
 
