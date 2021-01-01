@@ -275,6 +275,22 @@ pub struct DullChild {
     pub netlink_handle: Option<tokio::task::JoinHandle<Result<(),Error>>>,
 }
 
+impl DullChild {
+    // mostly used by unit test cases
+
+    pub fn empty() -> Arc<Mutex<DullChild>> {
+        let rt = tokio::runtime::Builder::new()
+            .threaded_scheduler()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        Arc::new(Mutex::new(DullChild { runtime:        Arc::new(rt),
+                                        netlink_handle: None,
+                                        data:           Mutex::new(DullData::empty()) }))
+    }
+}
+
 
 async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task::JoinHandle<Result<(),Error>>, String> {
 
@@ -314,7 +330,7 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
                     let sifn = gather_addr_info(&child, stuff).await.unwrap();
 
                     if let Some(lifn) = sifn {
-                        let (bgd, recv, send) = GraspDaemon::initdaemon(lifn.clone()).await.unwrap();
+                        let (bgd, recv, send) = GraspDaemon::initdaemon(lifn.clone(), child.clone()).await.unwrap();
                         let gd = Arc::new(Mutex::new(bgd));
                         {
                             let mut ifn = lifn.lock().await;

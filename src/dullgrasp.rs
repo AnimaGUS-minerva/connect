@@ -41,12 +41,14 @@ use crate::adjacency::Adjacency;
 #[derive(Debug)]
 pub struct GraspDaemon {
     pub dullif:       Arc<Mutex<DullInterface>>,
+    pub dullchild:    Arc<Mutex<DullChild>>,
     pub addr:         Ipv6Addr,
     pub grasp_dest:   std::net::SocketAddr
 }
 
 impl GraspDaemon {
-    pub async fn initdaemon(lifn: Arc<Mutex<DullInterface>>) -> Result<(GraspDaemon,
+    pub async fn initdaemon(lifn: Arc<Mutex<DullInterface>>,
+                            child: Arc<Mutex<DullChild>>) -> Result<(GraspDaemon,
                                                                         tokio::net::UdpSocket,
                                                                         tokio::net::UdpSocket),Error> {
 
@@ -69,7 +71,8 @@ impl GraspDaemon {
 
         let gp = GraspDaemon { addr: llv6,
                                grasp_dest:  SocketAddr::V6(SocketAddrV6::new(grasp_mcast, grasp::GRASP_PORT as u16, 0, ifindex)),
-                               dullif: lifn.clone()
+                               dullif: lifn.clone(),
+                               dullchild: child.clone(),
         };
 
         return Ok((gp, recv, send))
@@ -258,7 +261,7 @@ mod tests {
         };
     }
 
-    async fn construct_grasp_daemon(addr: &str) -> Result<GraspDaemon, std::io::Error> {
+    async fn construct_grasp_daemon(dc: Arc<Mutex<DullChild>>, addr: &str) -> Result<GraspDaemon, std::io::Error> {
         let mut dd = dull::DullData::empty();
 
         let val = addr.to_string().parse::<Ipv6Addr>().unwrap();
@@ -269,19 +272,20 @@ mod tests {
             ifn.linklocal6 = val;
         }
 
-        let (gd, _, _) = GraspDaemon::initdaemon(lifn.clone()).await.unwrap();
+        let (gd, _, _) = GraspDaemon::initdaemon(lifn.clone(), dc.clone()).await.unwrap();
         return Ok(gd);
     }
 
-    async fn send_mflood_message() -> Result<(), std::io::Error> {
-        let _gp = construct_grasp_daemon("fe80::11").await.unwrap();
+    async fn send_mflood_message(dc: Arc<Mutex<DullChild>>) -> Result<(), std::io::Error> {
+        let _gp = construct_grasp_daemon(dc, "fe80::11").await.unwrap();
         Ok(())
     }
 
 
     #[test]
     fn test_send_mflood() {
-        aw!(send_mflood_message()).unwrap();
+        let dc = DullChild::empty();
+        aw!(send_mflood_message(dc.clone())).unwrap();
     }
 }
 
