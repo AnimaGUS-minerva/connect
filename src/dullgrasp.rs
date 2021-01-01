@@ -117,8 +117,10 @@ impl GraspDaemon {
                         }
                     };
 
-                    // now we have a graspmessage which we'll do something with!
-                    println!("{} grasp message: {:?}", cnt, graspmessage);
+                    if debug_graspdaemon {
+                        // now we have a graspmessage which we'll do something with!
+                        println!("{} grasp message: {:?}", cnt, graspmessage);
+                    }
 
                     {
                         let gdl = gd.lock().await;
