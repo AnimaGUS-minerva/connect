@@ -22,9 +22,9 @@ use std::net::Ipv4Addr;
 use crate::error::ConnectError;
 use cbor::CborType;
 
+use netlink_packet_sock_diag::constants::{IPPROTO_TCP, IPPROTO_UDP};
+
 pub const GRASP_PORT: u32 = 7017;
-pub const IPPROTO_TCP: u16 = 6;
-pub const IPPROTO_UDP: u16 = 17;
 
 type SessionID  = u32;
 type Ttl        = u32;  /* miliseconds */
@@ -62,10 +62,10 @@ pub const F_NEG_DRY: u32 = 1 << 3;  // negotiation is dry-run
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq)]
 pub enum GraspLocator {
-    O_IPv6_LOCATOR { v6addr: Ipv6Addr, transport_proto: u16, port_number: u16},  /* 103 */
-    O_IPv4_LOCATOR { v4addr: Ipv4Addr, transport_proto: u16, port_number: u16},  /* 104 */
-    O_FQDN_LOCATOR { fqdn: String, transport_proto: u16, port_number: u16 },     /* 105 */
-    O_URI_LOCATOR  { uri: String, transport_proto: u16, port_number: u16 }       /* 106 */
+    O_IPv6_LOCATOR { v6addr: Ipv6Addr, transport_proto: u8, port_number: u16},  /* 103 */
+    O_IPv4_LOCATOR { v4addr: Ipv4Addr, transport_proto: u8, port_number: u16},  /* 104 */
+    O_FQDN_LOCATOR { fqdn: String, transport_proto: u8, port_number: u16 },     /* 105 */
+    O_URI_LOCATOR  { uri: String, transport_proto: u8, port_number: u16 }       /* 106 */
 }
 
 #[derive(Debug, PartialEq)]
@@ -148,7 +148,7 @@ fn grasp_parse_ipv6_locator(array: &Vec<CborType>) -> Result<Option<GraspLocator
     };
 
     Ok(Some(GraspLocator::O_IPv6_LOCATOR { v6addr: v6addr,
-                                           transport_proto: (transport_proto & 0xffff) as u16,
+                                           transport_proto: (transport_proto & 0xff) as u8,
                                            port_number:     (port_number & 0xffff) as u16 }))
 }
 

@@ -28,13 +28,14 @@ use std::net::{SocketAddrV6,SocketAddr};
 use std::sync::Arc;
 use futures::lock::Mutex;
 use rand::Rng;
+use netlink_packet_sock_diag::constants::IPPROTO_UDP;
 
 use cbor::CborType;
 use cbor::decoder::decode as cbor_decode;
 
 use crate::dull::{DullChild,DullInterface};
 use crate::grasp;
-use crate::grasp::{GraspMessage, GraspMessageType, IPPROTO_UDP};
+use crate::grasp::{GraspMessage, GraspMessageType};
 use crate::error::ConnectError;
 use crate::adjacency::Adjacency;
 

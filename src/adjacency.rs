@@ -21,6 +21,7 @@ use std::sync::Arc;
 use std::net::Ipv6Addr;
 use std::fmt;
 use futures::lock::{Mutex};
+use netlink_packet_sock_diag::constants::IPPROTO_UDP;
 
 use crate::dull::DullInterface;
 use crate::grasp;
@@ -67,7 +68,8 @@ impl Adjacency {
             } else                            { continue; }
             if let Some(loc1) = obj.locator {
                 match loc1 {
-                    grasp::GraspLocator::O_IPv6_LOCATOR { v6addr, transport_proto: grasp::IPPROTO_UDP, port_number } => {
+                    grasp::GraspLocator::O_IPv6_LOCATOR { v6addr, transport_proto: IPPROTO_UDP,
+                                                          port_number } => {
                         return Some(Adjacency { interface: di.clone(),
                                                 v6addr:    v6addr,
                                                 ikeport:   port_number,
