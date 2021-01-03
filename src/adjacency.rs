@@ -20,11 +20,14 @@ extern crate tokio;
 use std::sync::Arc;
 use std::net::Ipv6Addr;
 use std::fmt;
+use std::io::{Error,ErrorKind};
+use futures::stream::TryStreamExt;
 use futures::lock::{Mutex};
 use netlink_packet_sock_diag::constants::IPPROTO_UDP;
 
 use crate::dull::DullInterface;
 use crate::grasp;
+use crate::vtitun;
 
 #[derive(Debug)]
 pub struct Adjacency {
@@ -32,7 +35,9 @@ pub struct Adjacency {
     pub v6addr:        Ipv6Addr,
     pub ikeport:       u16,
     pub advertisement_count:      u32,
-    pub tunnelup:      bool
+    pub tunnelup:      bool,
+    pub vti_iface:     String,
+    pub vti_number:    u16
 }
 
 impl fmt::Display for Adjacency {
@@ -48,6 +53,8 @@ impl Adjacency {
         Adjacency { interface: di.clone(),
                     v6addr:    Ipv6Addr::UNSPECIFIED,
                     ikeport:   0,
+                    vti_number: 0,
+                    vti_iface:  "".to_string(),
                     advertisement_count: 0,
                     tunnelup:  false }
     }
@@ -70,11 +77,10 @@ impl Adjacency {
                 match loc1 {
                     grasp::GraspLocator::O_IPv6_LOCATOR { v6addr, transport_proto: IPPROTO_UDP,
                                                           port_number } => {
-                        return Some(Adjacency { interface: di.clone(),
-                                                v6addr:    v6addr,
-                                                ikeport:   port_number,
-                                                advertisement_count: 0,
-                                                tunnelup:  false })
+                        let mut adj       = Self::empty(di);
+                        adj.v6addr    = v6addr;
+                        adj.ikeport   = port_number;
+                        return Some(adj);
                     }
                     _ => { continue; }
                 }
@@ -82,6 +88,49 @@ impl Adjacency {
         }
 
         return None;
+    }
+
+    pub async fn bring_adjacency_up(self: &mut Adjacency) -> Result<(), std::io::Error> {
+
+        let ifn = self.interface.lock().await;
+
+        let lgd = match &ifn.grasp_daemon {
+            None => { return Ok(()); },
+            Some(gd) => { gd.lock().await }
+        };
+
+        let mut dc = lgd.dullchild.lock().await;
+        self.vti_number = dc.allocate_vti();
+
+        let dd = dc.data.lock().await;
+
+        let handle = match &dd.handle {
+            None => { return Ok(()); },
+            Some(handle) => handle
+        };
+
+        self.vti_iface  = format!("acp_{:03}", self.vti_number);
+        let laddr = ifn.linklocal6.clone();
+        let raddr = self.v6addr.clone();
+
+        vtitun::create(&self.vti_iface, laddr, raddr, self.vti_number).unwrap();
+
+        let mut vtiresult = handle.link().get().set_name_filter(self.vti_iface.clone()).execute();
+        let vti_next = vtiresult.try_next().await;
+        let vti_result = match vti_next {
+            Err(_repr) => { return Err(std::io::Error::new(ErrorKind::NotFound, self.vti_iface.clone())); },
+            Ok(vtiresult) => vtiresult
+        };
+        let vti_link = match vti_result {
+            Some(link) => link,
+            None => {
+                println!("did not find interface {}", self.vti_iface);
+                return Err(Error::new(ErrorKind::NotFound, self.vti_iface.clone()));
+            }
+        };
+        println!("new interface has ifindex: {}", vti_link.header.index);
+
+        Ok(())
     }
 
 }
@@ -97,6 +146,10 @@ mod tests {
         let amdi = Arc::new(Mutex::new(di));
         let ad = Adjacency::adjacency_from_mflood(amdi, grasp::tests::create_mflood()).unwrap();
         println!("mflood: {}", ad);
+    }
+
+    #[test]
+    fn test_adjacency_up() {
     }
 }
 

@@ -272,6 +272,7 @@ pub struct DullChild {
     //pub parent_stream: Arc<tokio::net::UnixStream>,
     pub runtime:       Arc<tokio::runtime::Runtime>,
     pub data:          Mutex<DullData>,
+    pub vti_number:     u16,
     pub netlink_handle: Option<tokio::task::JoinHandle<Result<(),Error>>>,
 }
 
@@ -287,7 +288,14 @@ impl DullChild {
 
         Arc::new(Mutex::new(DullChild { runtime:        Arc::new(rt),
                                         netlink_handle: None,
+                                        vti_number:     1,
                                         data:           Mutex::new(DullData::empty()) }))
+    }
+
+    pub fn allocate_vti(self: &mut DullChild) -> u16 {
+        let number = self.vti_number;
+        self.vti_number += 1;
+        return number;
     }
 }
 
@@ -495,6 +503,7 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
                 .unwrap();
 
             let childinfo = DullChild { runtime:        Arc::new(rt),
+                                        vti_number:     1,
                                         netlink_handle: None,
                                         data:           Mutex::new(DullData::empty()),
             };
