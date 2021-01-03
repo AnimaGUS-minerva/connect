@@ -17,6 +17,8 @@
 
 use std::os::raw::{c_char, c_uint, c_int};
 use std::ffi::CString;
+use std::net::Ipv6Addr;
+use std::io::Error;
 
 extern {
     fn create_vti6_tunnel(tunname: *const c_char,
@@ -24,6 +26,31 @@ extern {
                           tunloc:  *const c_char,  /* should be IPv6 address, presentation form */
                           tunrem:  *const c_char) -> c_int;
 }
+
+
+pub fn create(tunname: &str,
+              tunloc: Ipv6Addr,
+              tunrem: Ipv6Addr,
+              tunkey: u16) -> Result<(), std::io::Error> {
+
+    let tunname_c = CString::new(tunname).unwrap();
+
+    let tunloc_a  = tunloc.to_string();
+    let tunrem_a  = tunrem.to_string();
+
+    let tunloc_c  = CString::new(tunloc_a).unwrap();
+    let tunrem_c  = CString::new(tunrem_a).unwrap();
+    let result = unsafe {
+        create_vti6_tunnel(tunname_c.as_ptr(), tunkey as u32,
+                           tunloc_c.as_ptr(), tunrem_c.as_ptr())
+    };
+    if result == 0 {
+        return Ok(());
+    } else {
+        return Err(Error::from_raw_os_error(result));
+    }
+}
+
 
 /*
  * this test only works as root, and on Linux.
@@ -36,17 +63,11 @@ mod tests {
     #[test]
     fn test_vtitun() {
         let tunname = "test6";
-        let tunloc  = "fe80::5054:ff:fe51:12bc";
-        let tunrem  = "fe80::5054:ff:fe51:daff";
-        let tunname_c = CString::new(tunname).unwrap();
-        let tunloc_c  = CString::new(tunloc).unwrap();
-        let tunrem_c  = CString::new(tunrem).unwrap();
-        let tunkey   = 7;
-        let result = unsafe {
-            create_vti6_tunnel(tunname_c.as_ptr(), tunkey,
-                               tunloc_c.as_ptr(), tunrem_c.as_ptr())
-        };
-        assert_eq!(result, 0);
+        let tunloc  = "fe80::5054:ff:fe51:12bc".parse::<Ipv6Addr>().unwrap();
+        let tunrem  = "fe80::5054:ff:fe51:daff".parse::<Ipv6Addr>().unwrap();
+
+        let x = create(tunname, tunloc, tunrem, 7);
+        assert_eq!(x.is_ok(), true);
     }
 }
 
