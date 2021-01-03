@@ -1,4 +1,9 @@
 /*
+ * This code adapted from ip6tunnel.c from the iproute2 project.
+ * Why tunnels use ioctls, and not netlink... sigh.
+ *
+ * Getting the structure right in RUST seemed like more work than it was worth.
+ *
  * Copyright (C)2006 USAGI/WIDE Project
  *
  * This program is free software; you can redistribute it and/or modify
@@ -37,14 +42,13 @@
 #define DEFAULT_TNL_HOP_LIMIT	(64)
 const char *tunname = "v6play";
 
-# define min(x, y) ({			\
+#define min(x, y) ({			\
 	typeof(x) _min1 = (x);		\
 	typeof(y) _min2 = (y);		\
 	(void) (&_min1 == &_min2);	\
 	_min1 < _min2 ? _min1 : _min2; })
 
-
-size_t strlcpy(char *dst, const char *src, size_t size)
+static size_t strlcpy(char *dst, const char *src, size_t size)
 {
 	size_t srclen = strlen(src);
 
@@ -63,24 +67,24 @@ size_t strlcpy(char *dst, const char *src, size_t size)
  *                         remote fe80::5054:ff:fe51:12bc
  *                         key 7
  */
-static void init_my_tunnel(struct ip6_tnl_parm2 *p)
+static void init_my_tunnel(struct ip6_tnl_parm2 *p, const char *tunname,
+                           const char *local, const char *remote,
+                           unsigned key)
 {
-	int count = 0;
-	const char *medium = NULL;
         struct in6_addr raddr, laddr;
 
         p->proto = IPPROTO_IPV6;
         p->i_flags |= VTI_ISVTI;
 
-        inet_pton(AF_INET6, "fe80::5054:ff:fe51:12bc", &raddr);  // parse
+        inet_pton(AF_INET6, remote, &raddr);  // parse
         memcpy(&p->raddr, &raddr, sizeof(p->raddr));
 
-        inet_pton(AF_INET6, "fe80::5054:ff:fe51:daff", &laddr);
+        inet_pton(AF_INET6, local,  &laddr); // must exist locally
         memcpy(&p->laddr, &laddr, sizeof(p->laddr));
 
         p->i_flags |= GRE_KEY;
         p->o_flags |= GRE_KEY;
-        p->i_key = p->o_key = 7;  /* key */
+        p->i_key = p->o_key = htonl(key);  /* key ... in network byte order... */
 
         strlcpy(p->name, tunname, sizeof(p->name-1));
 }
@@ -95,8 +99,8 @@ static void ip6_tnl_parm_init(struct ip6_tnl_parm2 *p, int apply_default)
 	}
 }
 
-int preferred_family = AF_INET6;
-int main()
+int create_vti6_tunnel(const char *tunname, unsigned int key,
+                       const char *local, const char *remote)
 {
   struct ip6_tnl_parm2 p;
   const char *basedev = "ip6tnl0";
@@ -104,22 +108,21 @@ int main()
   int fd;
   int err, cmd;
 
-  printf("Creating new tunnel: %s\n", tunname);
+  //printf("Creating new tunnel: %s\n", tunname);
 
   ip6_tnl_parm_init(&p, 1);
-  init_my_tunnel(&p);
+  init_my_tunnel(&p, tunname, local, remote, key);
 
   if (p.i_flags & VTI_ISVTI)
     basedev = "ip6_vti0";
 
   cmd = SIOCADDTUNNEL;
-
   memset(&ifr, 0, sizeof(ifr));
 
   strlcpy(ifr.ifr_name, basedev, IFNAMSIZ);
   ifr.ifr_ifru.ifru_data = &p;
 
-  fd = socket(preferred_family, SOCK_DGRAM, 0);
+  fd = socket(AF_INET6, SOCK_DGRAM, 0);
   if (fd < 0) {
     fprintf(stderr, "create socket failed: %s\n", strerror(errno));
     return -1;
@@ -127,7 +130,9 @@ int main()
 
   err = ioctl(fd, cmd, &ifr);
   if (err)
-    fprintf(stderr, "add tunnel \"%s\" failed: %s\n", ifr.ifr_name,
+    fprintf(stderr, "add tunnel \"%s\" [%s] failed: %s\n", ifr.ifr_name, p.name,
             strerror(errno));
   close(fd);
+
+  return err;
 }
