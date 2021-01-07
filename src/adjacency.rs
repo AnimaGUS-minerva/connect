@@ -20,10 +20,11 @@ extern crate tokio;
 use std::sync::Arc;
 use std::net::Ipv6Addr;
 use std::fmt;
-use std::io::{Error,ErrorKind};
+//use std::io::{ErrorKind};
 use futures::stream::TryStreamExt;
 use futures::lock::{Mutex};
 use netlink_packet_sock_diag::constants::IPPROTO_UDP;
+use tokio::process::Command;
 
 use crate::dull::DullInterface;
 use crate::grasp;
@@ -37,7 +38,7 @@ pub struct Adjacency {
     pub advertisement_count:      u32,
     pub tunnelup:      bool,
     pub vti_iface:     String,
-    pub vti_number:    u16
+    pub vti_number:    Option<u16>
 }
 
 impl fmt::Display for Adjacency {
@@ -53,7 +54,7 @@ impl Adjacency {
         Adjacency { interface: di.clone(),
                     v6addr:    Ipv6Addr::UNSPECIFIED,
                     ikeport:   0,
-                    vti_number: 0,
+                    vti_number: None,
                     vti_iface:  "".to_string(),
                     advertisement_count: 0,
                     tunnelup:  false }
@@ -64,7 +65,7 @@ impl Adjacency {
     }
 
     pub fn adjacency_from_mflood(di: Arc<Mutex<DullInterface>>,
-                               gm: grasp::GraspMessage) -> Option<Adjacency> {
+                                 gm: grasp::GraspMessage) -> Option<Adjacency> {
 
         for obj in gm.objectives {
             if obj.objective_name != "AN_ACP" { continue; }
@@ -90,7 +91,7 @@ impl Adjacency {
         return None;
     }
 
-    pub async fn bring_adjacency_up(self: &mut Adjacency) -> Result<(), std::io::Error> {
+    pub async fn make_vti(self: &mut Adjacency) -> Result<(), rtnetlink::Error> {
 
         let ifn = self.interface.lock().await;
 
@@ -100,7 +101,8 @@ impl Adjacency {
         };
 
         let mut dc = lgd.dullchild.lock().await;
-        self.vti_number = dc.allocate_vti();
+        let vn = dc.allocate_vti();
+        self.vti_number = Some(vn);
 
         let dd = dc.data.lock().await;
 
@@ -109,27 +111,40 @@ impl Adjacency {
             Some(handle) => handle
         };
 
-        self.vti_iface  = format!("acp_{:03}", self.vti_number);
+        self.vti_iface  = format!("acp_{:03}", vn);
         let laddr = ifn.linklocal6.clone();
         let raddr = self.v6addr.clone();
 
-        vtitun::create(&self.vti_iface, laddr, raddr, self.vti_number).unwrap();
+        vtitun::create(&self.vti_iface, laddr, raddr, vn).unwrap();
 
         let mut vtiresult = handle.link().get().set_name_filter(self.vti_iface.clone()).execute();
         let vti_next = vtiresult.try_next().await;
         let vti_result = match vti_next {
-            Err(_repr) => { return Err(std::io::Error::new(ErrorKind::NotFound, self.vti_iface.clone())); },
+            Err(repr) => { return Err(repr) },
             Ok(vtiresult) => vtiresult
         };
         let vti_link = match vti_result {
             Some(link) => link,
             None => {
                 println!("did not find interface {}", self.vti_iface);
-                return Err(Error::new(ErrorKind::NotFound, self.vti_iface.clone()));
+                return Err(rtnetlink::Error::RequestFailed);
             }
         };
         println!("new interface has ifindex: {}", vti_link.header.index);
+        handle.link().set(vti_link.header.index).up().execute().await?;
 
+        Ok(())
+    }
+
+    pub async fn up(self: &mut Adjacency) -> Result<(), rtnetlink::Error> {
+        if self.vti_number == None {
+            self.make_vti().await?;
+        }
+
+        // see if we are trying to bring a tunnel up, and if not, then do so.
+
+        // but for now, run a script to do it manually.
+        let _command = Command::new("/root/tunnel").arg(self.v6addr.to_string()).spawn().unwrap().await.unwrap();
         Ok(())
     }
 

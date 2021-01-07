@@ -22,7 +22,7 @@ use std::net::Ipv4Addr;
 use crate::error::ConnectError;
 use cbor::CborType;
 
-use netlink_packet_sock_diag::constants::{IPPROTO_TCP, IPPROTO_UDP};
+//use netlink_packet_sock_diag::constants::{IPPROTO_TCP, IPPROTO_UDP};
 
 pub const GRASP_PORT: u32 = 7017;
 

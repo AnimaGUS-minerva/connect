@@ -137,6 +137,13 @@ impl GraspDaemon {
                             /* now mark the adj as trying to be up */
                             let mut adj = ladj.lock().await;
                             adj.increment();
+
+                            /* bring the dang thing up!! */
+                            let result = adj.up().await;
+                            match result {
+                                Err(stuff) => { println!("error: {:?}", stuff); }
+                                Ok(_) => { }
+                            }
                         }
                     }
                 }

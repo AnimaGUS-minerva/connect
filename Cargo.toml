@@ -21,7 +21,7 @@ netlink-packet-route = { version = "0.5" }
 rtnetlink     = { version = "0.5" }
 netlink-proto = { version = "0.4" }
 netlink-packet-sock-diag = "*"
-tokio         = { version = "0.2",    features = [ "udp", "uds", "macros", "rt-threaded", "rt-core", "io-util", "time"] }
+tokio         = { version = "0.2",    features = [ "udp", "uds", "macros", "rt-threaded", "rt-core", "io-util", "time", "process"] }
 tokio-util    = { version = "0.2",    features = ["codec"] }
 tokio-serde   = { version = "0.7.1",  features = ["cbor" ] }
 bytes         = "*"
