@@ -30,6 +30,7 @@ gag           = "*"
 libc          = "*"
 custom_error  = "*"
 rand          = "*"
+structopt     = "0.3"
 
 [build-dependencies]
 cc = "1.0"

@@ -21,6 +21,7 @@ use netlink_packet_route::ErrorMessage;
 use std::io::ErrorKind;
 use tokio::time::{delay_for, Duration};
 //use std::os::unix::net::UnixStream;
+use structopt::StructOpt;
 
 pub mod dull;
 pub mod control;
@@ -114,9 +115,34 @@ async fn exit_child(dull: &mut dull::Dull) {
     }
 }
 
-async fn parent(rt: &tokio::runtime::Runtime, dullinit: dull::DullInit) -> Result<(), String> {
+#[derive(StructOpt)]
+struct ConnectOptions {
+    #[structopt(long, parse(try_from_str))]
+    debug_graspdaemon: bool,
+
+    //    bridge_name: String
+
+}
+
+async fn set_debug(dull: &mut dull::Dull, args: &ConnectOptions) {
+    let opt = control::DullControl::GraspDebug { grasp_debug: args.debug_graspdaemon };
+
+    let result = control::write_control(&mut dull.child_stream, &opt).await;
+
+    match result  {
+        Err(e) => match e.kind() {
+            ErrorKind::BrokenPipe  => { return (); },
+            _                      => { return (); }  // maybe error.
+        }
+        _ => { return (); }
+    }
+}
+
+async fn parent(rt: &tokio::runtime::Runtime, dullinit: dull::DullInit, args: ConnectOptions) -> Result<(), String> {
 
     let mut dull = dull::Dull::from_dull_init(dullinit);
+
+    set_debug(&mut dull, &args).await;
 
     // wait for hello from child.
     //println!("waiting for hello from child");
@@ -149,10 +175,11 @@ async fn parent(rt: &tokio::runtime::Runtime, dullinit: dull::DullInit) -> Resul
     return Ok(());
 }
 
-
 fn main () -> Result<(), String> {
 
     println!("Hermes Connect {}", VERSION);
+
+    let args = ConnectOptions::from_args();
 
     /* before doing any async stuff, start the DULL child */
     let dull = dull::namespace_daemon().unwrap();
@@ -164,7 +191,7 @@ fn main () -> Result<(), String> {
         .build()
         .unwrap();
 
-    let future = parent(&rt, dull);
+    let future = parent(&rt, dull, args);
     rt.handle().block_on(future).unwrap();
 
     return Ok(());

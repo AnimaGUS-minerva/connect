@@ -385,6 +385,12 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>, mut child_sock: tokio
                 control::DullControl::AdminDown { interface_index: ifn } => {
                     println!("DULL turning off interface {}", ifn);
                 }
+                control::DullControl::GraspDebug { grasp_debug: deb } => {
+                    println!("Debug set to {}", deb);
+                    let cl = child.lock().await;
+                    let mut dl = cl.data.lock().await;
+                    dl.debug_graspdaemon = deb;
+                }
                 control::DullControl::ChildReady => {} // nothing to do
             }
         }

@@ -34,6 +34,7 @@ use crate::dull::Dull;
 pub enum DullControl {
     Exit,
     AdminDown { interface_index: u32 },
+    GraspDebug { grasp_debug: bool },
     ChildReady
 }
 
