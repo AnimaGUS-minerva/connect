@@ -86,8 +86,7 @@ impl GraspDaemon {
         //let _runtime = { dd.lock().await.runtime.clone() };
         let mut cnt: u32 = 0;
 
-        println!("fetching debug");
-        let debug_graspdaemon = {
+        let mut debug_graspdaemon = {
             dd.lock().await.data.lock().await.debug_graspdaemon
         };
         loop {
