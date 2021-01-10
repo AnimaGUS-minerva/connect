@@ -33,7 +33,7 @@ use crate::vtitun;
 #[derive(Debug)]
 pub struct Adjacency {
     pub interface:     Arc<Mutex<DullInterface>>,
-    pub v6addr:        Ipv6Addr,
+    pub v6addr:        Ipv6Addr,                      // IPv6-LL of peer
     pub ikeport:       u16,
     pub advertisement_count:      u32,
     pub tunnelup:      bool,
@@ -142,12 +142,25 @@ impl Adjacency {
     pub async fn up(self: &mut Adjacency) -> Result<(), rtnetlink::Error> {
         if self.vti_number == None {
             self.make_vti().await?;
+        } else {
+            return Ok(());
         }
 
         // see if we are trying to bring a tunnel up, and if not, then do so.
+        let myll6addr = {
+            let ifn = self.interface.lock().await;
+            ifn.linklocal6
+        };
+
+        let vtinum = format!("{}", self.vti_number.unwrap());
 
         // but for now, run a script to do it manually.
-        let _command = Command::new("/root/tunnel").arg(self.v6addr.to_string()).spawn().unwrap().await.unwrap();
+        let _command = Command::new("/root/tunnel")
+            .arg(self.vti_iface.to_string())
+            .arg(vtinum)
+            .arg(myll6addr.to_string())
+            .arg(self.v6addr.to_string())
+            .spawn().unwrap().await.unwrap();
         Ok(())
     }
 
