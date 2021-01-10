@@ -122,28 +122,34 @@ impl GraspDaemon {
                         println!("{} grasp message: {:?}", cnt, graspmessage);
                     }
 
-                    {
+                    let ladj = {
                         let gdl = gd.lock().await;
+                        println!("waiting for dullif to add adjacency");
                         let mut dil = gdl.dullif.lock().await;
 
                         /* insert into list of edges */
                         let sadj = Adjacency::adjacency_from_mflood(gdl.dullif.clone(), graspmessage);
                         if let Some(adj) = sadj {
-                            let ladj = dil.adjacencies.entry(adj.v6addr).or_insert_with(|| {
+                            let nadj = dil.adjacencies.entry(adj.v6addr).or_insert_with(|| {
                                 Arc::new(Mutex::new(adj))
                             });
 
-                            /* now mark the adj as trying to be up */
-                            let mut adj = ladj.lock().await;
-                            adj.increment();
-
-                            /* bring the dang thing up!! */
-                            let result = adj.up().await;
-                            match result {
-                                Err(stuff) => { println!("error: {:?}", stuff); }
-                                Ok(_) => { }
-                            }
+                            /* return the adjancy for further use */
+                            nadj.clone()
+                        } else {
+                            /* something wrong, obviously not real/valid adjancency, go read more */
+                            continue;
                         }
+                    };
+
+                    let mut adj = ladj.lock().await;
+                    adj.increment();
+
+                    /* bring the dang thing up!! */
+                    let result = adj.up().await;
+                    match result {
+                        Err(stuff) => { println!("error: {:?}", stuff); }
+                        Ok(_) => { }
                     }
                 }
                 Err(msg) => {
