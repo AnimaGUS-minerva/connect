@@ -202,8 +202,10 @@ impl DullData {
         println!("ifindex: {} family: {}", ifindex, lh.family);
 
         let     ifna = self.get_entry_by_ifindex(ifindex).await;
+        println!("calling ifna.lock");
         let mut ifn  = ifna.lock().await;
 
+        println!("processing nlas");
         for nlas in am.nlas {
             use netlink_packet_route::address::Nla;
             match nlas {
