@@ -157,6 +157,11 @@ impl GraspDaemon {
                     // deal with socket closed?
                 }
             }
+
+            debug_graspdaemon = {
+                dd.lock().await.data.lock().await.debug_graspdaemon
+            };
+
             cnt += 1;
         }
     }
