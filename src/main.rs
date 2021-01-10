@@ -81,12 +81,15 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: String) -> 
 
     let mut pull0 = handle.link().get().set_name_filter("pull0".to_string()).execute();
     if let Some(link) = pull0.try_next().await? {
+        // put the interface up
         handle
             .link()
             .set(link.header.index)
             .up()
             .execute()
             .await?;
+
+        // put it into the trusted bridge
         handle
             .link()
             .set(link.header.index)
