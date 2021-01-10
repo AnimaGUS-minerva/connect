@@ -130,6 +130,12 @@ impl GraspDaemon {
                         /* insert into list of edges */
                         let sadj = Adjacency::adjacency_from_mflood(gdl.dullif.clone(), graspmessage);
                         if let Some(adj) = sadj {
+
+                            // only pay attention to adjancenies that are from LLv6 addresses
+                            if !adj.v6addr.is_unicast_link_local_strict {
+                                continue;
+                            }
+
                             let nadj = dil.adjacencies.entry(adj.v6addr).or_insert_with(|| {
                                 Arc::new(Mutex::new(adj))
                             });
