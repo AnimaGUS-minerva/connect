@@ -131,8 +131,12 @@ impl GraspDaemon {
                         let sadj = Adjacency::adjacency_from_mflood(gdl.dullif.clone(), graspmessage);
                         if let Some(adj) = sadj {
 
-                            // only pay attention to adjancenies that are from LLv6 addresses
-                            if !adj.v6addr.is_unicast_link_local_strict {
+                            // only pay attention to adjacencies that are from LLv6 addresses
+                            // but this has been "unstable" for 5 years.
+                            //if !adj.v6addr.is_unicast_link_local() {
+                            // continue;
+                            //}
+                            if adj.v6addr.segments()[0] != 0xfe80 {
                                 continue;
                             }
 
