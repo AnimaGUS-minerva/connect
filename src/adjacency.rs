@@ -93,7 +93,6 @@ impl Adjacency {
 
     pub async fn make_vti(self: &mut Adjacency) -> Result<(), rtnetlink::Error> {
 
-        println!("locking interface");
         let ifn = self.interface.lock().await;
 
         let lgd = match &ifn.grasp_daemon {
@@ -101,12 +100,10 @@ impl Adjacency {
             Some(gd) => { gd.lock().await }
         };
 
-        println!("locking dullchild");
         let mut dc = lgd.dullchild.lock().await;
         let vn = dc.allocate_vti();
         self.vti_number = Some(vn);
 
-        println!("got vti {:?}", self.vti_number);
         let dd = dc.data.lock().await;
 
         let handle = match &dd.handle {
