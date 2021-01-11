@@ -130,12 +130,11 @@ impl GraspDaemon {
 
                     let ladj = {
                         let gdl = gd.lock().await;
-                        println!("waiting for dullif to add adjacency");
                         let mut dil = gdl.dullif.lock().await;
 
                         /* insert into list of edges */
                         let sadj = Adjacency::adjacency_from_mflood(gdl.dullif.clone(), graspmessage);
-                        if let Some(adj) = sadj {
+                        if let Some(mut adj) = sadj {
 
                             // only pay attention to adjacencies that are from LLv6 addresses
                             // but this has been "unstable" for 5 years.
@@ -151,6 +150,9 @@ impl GraspDaemon {
                                 continue;
                             }
 
+                            /* make copy of ifindex, cause having it is cheap */
+                            adj.ifindex = dil.ifindex;
+
                             let nadj = dil.adjacencies.entry(adj.v6addr).or_insert_with(|| {
                                 Arc::new(Mutex::new(adj))
                             });
@@ -164,6 +166,7 @@ impl GraspDaemon {
                     };
 
                     let mut adj = ladj.lock().await;
+                    println!("adding adjancency on {} for {}", adj.ifindex, adj.v6addr);
                     adj.increment();
 
                     /* bring the dang thing up!! */

@@ -33,6 +33,7 @@ use crate::vtitun;
 #[derive(Debug)]
 pub struct Adjacency {
     pub interface:     Arc<Mutex<DullInterface>>,
+    pub ifindex:       u32,
     pub v6addr:        Ipv6Addr,                      // IPv6-LL of peer
     pub ikeport:       u16,
     pub advertisement_count:      u32,
@@ -56,6 +57,7 @@ impl Adjacency {
                     ikeport:   0,
                     vti_number: None,
                     vti_iface:  "".to_string(),
+                    ifindex:   0,
                     advertisement_count: 0,
                     tunnelup:  false }
     }

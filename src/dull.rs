@@ -162,7 +162,7 @@ impl DullData {
                 match nlas {
                     Nla::IfName(name) => {
                         println!("ifname: {}", name);
-                        if name[0..3] == "acp_".to_string() {
+                        if name[0..4] == "acp_".to_string() {
                             ifn.is_acp = true;
                         }
                         ifn.ifname = name;
