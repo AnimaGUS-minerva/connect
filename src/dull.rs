@@ -232,7 +232,14 @@ impl DullData {
                         continue;
                     }
                     let addrbytes: [u8; 16] = addrset.try_into().unwrap();
-                    ifn.linklocal6 = Ipv6Addr::from(addrbytes);
+                    let llv6 = Ipv6Addr::from(addrbytes);
+                    //if !llv6.is_unicast_link_local() {
+                    // continue;
+                    //}
+                    if llv6.segments()[0] != 0xfe80 {
+                        continue;
+                    }
+                    ifn.linklocal6 = llv6;
                     print!("llv6: {}", ifn.linklocal6);
                 },
                 Nla::CacheInfo(_info) => { /* nothing */},
