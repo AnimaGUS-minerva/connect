@@ -24,10 +24,8 @@ use gag::Redirect;
 
 use std::sync::Arc;
 use crate::control;
-use crate::dullgrasp;
-use crate::dullgrasp::GraspDaemon;
-use crate::adjacency::Adjacency;
 use crate::control::DebugOptions;
+use crate::dull::IfIndex;
 
 use nix::unistd::*;
 use nix::sched::unshare;
@@ -62,83 +60,79 @@ use netlink_packet_route::{
  * This function forks and creates a child process that will enter a new network namespace
  * using unshare(2).
  *
- * Prior to doing this, it will create a new dull instance object.
+ * This namespace is used as the ACP namespace environment.
+ *
  */
 
 /* This structure is present in the parent to represent the DULL, before tokio */
-pub struct DullInit {
+pub struct AcpInit {
     pub child_io:      UnixStream,
     pub dullpid:       Pid
 }
 
 /* This structure is present in the parent to represent the DULL */
-pub struct Dull {
+pub struct Acp {
     pub debug:         DebugOptions,
     pub child_stream:  tokio::net::UnixStream,
-    pub dullpid:       Pid
+    pub acppid:        Pid
 }
 
-impl Dull {
-    pub fn from_dull_init(init: DullInit) -> Dull {
-        Dull { child_stream: tokio::net::UnixStream::from_std(init.child_io).unwrap(),
+impl Acp {
+    pub fn from_acp_init(init: AcpInit) -> Acp {
+        Acp { child_stream: tokio::net::UnixStream::from_std(init.child_io).unwrap(),
                debug:        DebugOptions::empty(),
-               dullpid:      init.dullpid }
+               acppid:       init.dullpid }
     }
 }
 
-pub type IfIndex = u32;
-
 #[derive(Debug)]
-pub struct DullInterface {
+pub struct AcpInterface {
     pub ifindex:       IfIndex,
     pub ifname:        String,
     pub is_acp:        bool,             /* true if this is a created ACP interface */
     pub mtu:           u32,
     pub linklocal6:    Ipv6Addr,
     pub oper_state:    State,
-    pub grasp_daemon:  Option<Arc<Mutex<dullgrasp::GraspDaemon>>>,
-    pub adjacencies:   HashMap<Ipv6Addr, Arc<Mutex<Adjacency>>>
 }
 
-impl DullInterface {
-    pub fn empty(ifi: IfIndex) -> DullInterface {
-        DullInterface {
+impl AcpInterface {
+    pub fn empty(ifi: IfIndex) -> AcpInterface {
+        AcpInterface {
             ifindex: ifi,
             ifname:  "".to_string(),
             mtu:     0,
             is_acp:     false,
             linklocal6: Ipv6Addr::UNSPECIFIED,
             oper_state: State::Down,
-            grasp_daemon: None,
-            adjacencies:  HashMap::new()
         }
     }
 }
 
-pub struct DullData {
-    pub interfaces:    HashMap<u32, Arc<Mutex<DullInterface>>>,
-    pub acpns:         Pid,
+pub struct AcpData {
+    pub interfaces:    HashMap<u32, Arc<Mutex<AcpInterface>>>,
     pub cmd_cnt:       u32,
     pub debug:         DebugOptions,
     pub exit_now:      bool,
     pub handle:        Option<Handle>
 }
 
-impl DullData {
-    pub fn empty() -> DullData {
-        return DullData { interfaces: HashMap::new(), cmd_cnt: 0,
-                          debug: DebugOptions::empty(),
-                          exit_now:         false,
-                          handle: None
+// so this needs to become a trait, maybe called... NetLinkWatcher
+
+impl AcpData {
+    pub fn empty() -> AcpData {
+        return AcpData { interfaces: HashMap::new(), cmd_cnt: 0,
+                         debug: DebugOptions::empty(),
+                         exit_now:         false,
+                         handle: None
         }
     }
 
-    pub async fn get_entry_by_ifindex(self: &mut DullData, ifindex: IfIndex) -> &Arc<Mutex<DullInterface>> {
-        let ifnl = self.interfaces.entry(ifindex).or_insert_with(|| { Arc::new(Mutex::new(DullInterface::empty(ifindex)))});
+    pub async fn get_entry_by_ifindex(self: &mut AcpData, ifindex: IfIndex) -> &Arc<Mutex<AcpInterface>> {
+        let ifnl = self.interfaces.entry(ifindex).or_insert_with(|| { Arc::new(Mutex::new(AcpInterface::empty(ifindex)))});
         return ifnl;
     }
 
-    pub async fn store_link_info(self: &mut DullData, lm: LinkMessage, ifindex: IfIndex) {
+    pub async fn store_link_info(self: &mut AcpData, lm: LinkMessage, ifindex: IfIndex) {
 
         let results = {
             let     ifna = self.get_entry_by_ifindex(ifindex).await;
@@ -187,7 +181,7 @@ impl DullData {
             (ifn.oper_state == State::Down, ifn.ifindex.clone(), ifn.ifname.clone(), ifn.is_acp)
         };
 
-        if !results.3 && results.0 {  /* results.3== is_acp, results.0== Down */
+        if results.3 && results.0 {  /* results.3== is_acp, results.0== Down */
             println!("bringing interface {} up", results.2);
 
             let handle = self.handle.as_ref().unwrap();
@@ -202,7 +196,7 @@ impl DullData {
         return ();
     }
 
-    pub async fn store_addr_info(self: &mut DullData, am: AddressMessage) -> Option<Arc<Mutex<DullInterface>>> {
+    pub async fn store_addr_info(self: &mut AcpData, am: AddressMessage) -> Option<Arc<Mutex<AcpInterface>>> {
 
         let lh = am.header;
         let ifindex = lh.index;
@@ -239,25 +233,22 @@ impl DullData {
         println!("");
 
         /* do nothing for ACP named interfaces */
-        if ifn.is_acp {
-            println!("ignoring acp interface[{}]: {}", ifn.ifindex, ifn.ifname);
+        if !ifn.is_acp {
+            println!("ignoring not-acp interface[{}]: {}", ifn.ifindex, ifn.ifname);
             return None;
         }
 
         if ifn.oper_state == State::Up {
-            match ifn.grasp_daemon {
-                None => { return Some(ifna.clone()); }
-                _    => { return None; }
-            }
+            println!("turning up");
         }
         return None;
     }
 
 }
 
-async fn gather_link_info(ldull: &Arc<Mutex<DullChild>>, lm: LinkMessage) -> Result<(), Error> {
-    let dull     = ldull.lock().await;
-    let mut data = dull.data.lock().await;
+async fn gather_link_info(lacp: &Arc<Mutex<AcpChild>>, lm: LinkMessage) -> Result<(), Error> {
+    let acp      = lacp.lock().await;
+    let mut data = acp.data.lock().await;
 
     data.cmd_cnt += 1;
     println!("\ncommand {}", data.cmd_cnt);
@@ -278,9 +269,9 @@ async fn gather_link_info(ldull: &Arc<Mutex<DullChild>>, lm: LinkMessage) -> Res
     Ok(())
 }
 
-async fn gather_addr_info(ldull: &Arc<Mutex<DullChild>>, am: AddressMessage) -> Result<Option<Arc<Mutex<DullInterface>>>, Error> {
-    let dull     = ldull.lock().await;
-    let mut data = dull.data.lock().await;
+async fn gather_addr_info(lacp: &Arc<Mutex<AcpChild>>, am: AddressMessage) -> Result<Option<Arc<Mutex<AcpInterface>>>, Error> {
+    let acp     = lacp.lock().await;
+    let mut data = acp.data.lock().await;
 
     data.cmd_cnt += 1;
     println!("\ncommand {}", data.cmd_cnt);
@@ -288,39 +279,32 @@ async fn gather_addr_info(ldull: &Arc<Mutex<DullChild>>, am: AddressMessage) -> 
 }
 
 
-pub struct DullChild {
+pub struct AcpChild {
     //pub parent_stream: Arc<tokio::net::UnixStream>,
     pub runtime:       Arc<tokio::runtime::Runtime>,
-    pub data:          Mutex<DullData>,
-    pub vti_number:     u16,
+    pub data:          Mutex<AcpData>,
+    //pub vti_number:     u16,
     pub netlink_handle: Option<tokio::task::JoinHandle<Result<(),Error>>>,
 }
 
-impl DullChild {
+impl AcpChild {
     // mostly used by unit test cases
 
-    pub fn empty() -> Arc<Mutex<DullChild>> {
+    pub fn empty() -> Arc<Mutex<AcpChild>> {
         let rt = tokio::runtime::Builder::new()
             .threaded_scheduler()
             .enable_all()
             .build()
             .unwrap();
 
-        Arc::new(Mutex::new(DullChild { runtime:        Arc::new(rt),
-                                        netlink_handle: None,
-                                        vti_number:     1,
-                                        data:           Mutex::new(DullData::empty()) }))
-    }
-
-    pub fn allocate_vti(self: &mut DullChild) -> u16 {
-        let number = self.vti_number;
-        self.vti_number += 1;
-        return number;
+        Arc::new(Mutex::new(AcpChild { runtime:        Arc::new(rt),
+                                       netlink_handle: None,
+                                       data:           Mutex::new(AcpData::empty()) }))
     }
 }
 
 
-async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task::JoinHandle<Result<(),Error>>, String> {
+async fn listen_network(childinfo: &Arc<Mutex<AcpChild>>) -> Result<tokio::task::JoinHandle<Result<(),Error>>, String> {
 
     let child = childinfo.clone();   /* take reference to childinfo, for move below */
     let (rt,rt2) = {
@@ -357,15 +341,9 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
                 InnerMessage(NewAddress(stuff)) => {
                     let sifn = gather_addr_info(&child, stuff).await.unwrap();
 
-                    if let Some(lifn) = sifn {
-                        let (bgd, recv, send) = GraspDaemon::initdaemon(lifn.clone(), child.clone()).await.unwrap();
-                        let gd = Arc::new(Mutex::new(bgd));
-                        {
-                            let mut ifn = lifn.lock().await;
-                            ifn.grasp_daemon = Some(gd.clone());
-                        }
-
-                        GraspDaemon::start_loop(gd, recv, send, child.clone()).await;
+                    if let Some(_lifn) = sifn {
+                        // do something with this interface
+                        println!("interface found");
                     }
                 }
                 InnerMessage(NewRoute(_thing)) => {
@@ -380,7 +358,7 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
     Ok(listenhandle)
 }
 
-pub async fn process_control(child: Arc<Mutex<DullChild>>, mut child_sock: tokio::net::UnixStream) {
+pub async fn process_control(child: Arc<Mutex<AcpChild>>, mut child_sock: tokio::net::UnixStream) {
     loop {
         if let Ok(thing) = control::read_control(&mut child_sock).await {
             match thing {
@@ -411,13 +389,8 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>, mut child_sock: tokio
                     let mut dl = cl.data.lock().await;
                     dl.debug.debug_graspdaemon = deb;
                 }
-                control::DullControl::DullNamespace { namespace_id: acpns } => {
-                    println!("ACP namespace set to {}", acpns);
-                    let cl = child.lock().await;
-                    let mut dl = cl.data.lock().await;
-                    dl.acpns = Pid::from_raw(acpns);
-                }
                 control::DullControl::ChildReady => {} // nothing to do
+                control::DullControl::DullNamespace { .. } => {} // nothing to do
             }
         }
     }
@@ -454,7 +427,7 @@ pub fn create_netns() -> Result<(), String> {
     Ok(())
 }
 
-async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream) {
+async fn child_processing(childinfo: Arc<Mutex<AcpChild>>, sock: UnixStream) {
     let mut parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
 
     /* arrange to listen on network events in the new network namespace */
@@ -466,15 +439,15 @@ async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream) {
     }
 
     /* let parent know that we ready */
-    println!("tell parent, child is ready");
+    println!("acp tell parent, child is ready");
     control::write_child_ready(&mut parent_stream).await.unwrap();
 
     /* listen to commands from the parent */
-    println!("child waiting for commands");
+    println!("acp child waiting for commands");
     process_control(childinfo, parent_stream).await;
 }
 
-pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
+pub fn namespace_daemon() -> Result<AcpInit, std::io::Error> {
 
     //println!("daemon start");
     // set up a pair of sockets, connected
@@ -484,24 +457,18 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
     //println!("daemon fork");
     let result = unsafe{fork()}.expect("fork failed");
 
-
     match result {
         ForkResult::Parent{ child } => {
 
-            let dull = DullInit { child_io: pair.0, dullpid: child };
+            let acp = AcpInit { child_io: pair.0, dullpid: child };
 
             // close the childfd in the parent
             //pair.1.close().unwrap();
 
-            println!("Hermes started new network namespace: {}", child);
-            return Ok(dull);
+            println!("Hermes started new ACP network namespace: {}", child);
+            return Ok(acp);
         }
         ForkResult::Child => {
-
-            // close the parentfd in the child
-            //pair.0.close().unwrap();
-
-            //println!("Child redirected");
 
             // Open a log
             let log = OpenOptions::new()
@@ -509,7 +476,7 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
                 .read(true)
                 .create(true)
                 .write(true)
-                .open("child_stdout.log")
+                .open("acp_stdout.log")
                 .unwrap();
             let _out_redirect = Redirect::stdout(log).unwrap();
             // Log for stderr
@@ -518,7 +485,7 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
                 .read(true)
                 .create(true)
                 .write(true)
-                .open("child_stderr.log")
+                .open("acp_stderr.log")
                 .unwrap();
             let _err_redirect = Redirect::stderr(log).unwrap();
 
@@ -534,10 +501,9 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
                 .build()
                 .unwrap();
 
-            let childinfo = DullChild { runtime:        Arc::new(rt),
-                                        vti_number:     1,
-                                        netlink_handle: None,
-                                        data:           Mutex::new(DullData::empty()),
+            let childinfo = AcpChild { runtime:        Arc::new(rt),
+                                       netlink_handle: None,
+                                       data:           Mutex::new(AcpData::empty()),
             };
 
             let art = childinfo.runtime.clone();

@@ -50,6 +50,7 @@ pub enum DullControl {
     Exit,
     AdminDown { interface_index: u32 },
     GraspDebug { grasp_debug: bool },
+    DullNamespace { namespace_id: u32 },
     ChildReady
 }
 

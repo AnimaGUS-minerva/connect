@@ -17,6 +17,7 @@
 
 extern crate sysctl;
 
+use nix::unistd::Pid;
 use futures::stream::TryStreamExt;
 use rtnetlink::{new_connection, Error, Handle, Error::NetlinkError};
 use netlink_packet_route::ErrorMessage;
@@ -28,6 +29,7 @@ use structopt::StructOpt;
 
 
 pub mod dull;
+pub mod acp;
 pub mod control;
 pub mod dullgrasp;
 pub mod grasp;
@@ -167,16 +169,20 @@ async fn set_debug(dull: &mut dull::Dull) {
     }
 }
 
-async fn parent(rt: &tokio::runtime::Runtime, dullinit: dull::DullInit, args: ConnectOptions) -> Result<(), String> {
+async fn parents(rt: &tokio::runtime::Runtime,
+                 dullinit: dull::DullInit,
+                 acpinit:  acp::AcpInit,
+                 args: ConnectOptions) -> Result<(), String> {
 
     let mut dull = dull::Dull::from_dull_init(dullinit);
+    let mut acp = acp::Acp::from_acp_init(acpinit);
 
     dull.debug.debug_graspdaemon           = args.debug_graspdaemon;
     dull.debug.allow_router_advertisement  = args.allow_ra;
 
     set_debug(&mut dull).await;
 
-    // wait for hello from child.
+    // wait for hello from children.
     //println!("waiting for hello from child");
     while let Ok(msg) = control::read_control(&mut dull.child_stream).await {
         match msg {
@@ -213,6 +219,9 @@ fn main () -> Result<(), String> {
 
     let args = ConnectOptions::from_args();
 
+    /* before doing any async stuff, start the ACP namespace child */
+    let _acp  = acp::namespace_daemon().unwrap();
+
     /* before doing any async stuff, start the DULL child */
     let dull = dull::namespace_daemon().unwrap();
 
@@ -223,7 +232,7 @@ fn main () -> Result<(), String> {
         .build()
         .unwrap();
 
-    let future = parent(&rt, dull, args);
+    let future = parents(&rt, dull, acp, args);
     rt.handle().block_on(future).unwrap();
 
     return Ok(());
