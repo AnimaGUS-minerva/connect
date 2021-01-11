@@ -64,10 +64,19 @@ use netlink_packet_route::{
  * Prior to doing this, it will create a new dull instance object.
  */
 
-/* This structure is present in the parent to represent the DULL */
-pub struct Dull {
-    pub child_stream:  tokio::net::UnixStream,
-    pub dullpid:       Pid
+pub struct DullOptions {
+    pub allow_router_advertisement: bool,
+    pub debug_namespaces:  bool,
+    pub debug_graspdaemon: bool
+}
+impl DullOptions {
+    pub fn empty() -> DullOptions {
+        DullOptions {
+            allow_router_advertisement: false,
+            debug_namespaces:  false,
+            debug_graspdaemon: false
+        }
+    }
 }
 
 /* This structure is present in the parent to represent the DULL, before tokio */
@@ -76,9 +85,17 @@ pub struct DullInit {
     pub dullpid:       Pid
 }
 
+/* This structure is present in the parent to represent the DULL */
+pub struct Dull {
+    pub debug:         DullOptions,
+    pub child_stream:  tokio::net::UnixStream,
+    pub dullpid:       Pid
+}
+
 impl Dull {
     pub fn from_dull_init(init: DullInit) -> Dull {
         Dull { child_stream: tokio::net::UnixStream::from_std(init.child_io).unwrap(),
+               debug:        DullOptions::empty(),
                dullpid:      init.dullpid }
     }
 }
@@ -113,17 +130,15 @@ impl DullInterface {
 pub struct DullData {
     pub interfaces:    HashMap<u32, Arc<Mutex<DullInterface>>>,
     pub cmd_cnt:       u32,
-    pub debug_namespaces:  bool,
-    pub debug_graspdaemon: bool,
-    pub exit_now:          bool,
+    pub debug:         DullOptions,
+    pub exit_now:      bool,
     pub handle:        Option<Handle>
 }
 
 impl DullData {
     pub fn empty() -> DullData {
         return DullData { interfaces: HashMap::new(), cmd_cnt: 0,
-                          debug_namespaces: false,
-                          debug_graspdaemon: false,
+                          debug: DullOptions::empty(),
                           exit_now:         false,
                           handle: None
         }
@@ -249,7 +264,7 @@ async fn gather_link_info(ldull: &Arc<Mutex<DullChild>>, lm: LinkMessage) -> Res
 
     data.store_link_info(lm, ifindex).await;
 
-    if data.debug_namespaces {
+    if data.debug.debug_namespaces {
         Command::new("ip")
             .arg("link")
             .arg("ls")
@@ -391,7 +406,7 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>, mut child_sock: tokio
                     println!("Debug set to {}", deb);
                     let cl = child.lock().await;
                     let mut dl = cl.data.lock().await;
-                    dl.debug_graspdaemon = deb;
+                    dl.debug.debug_graspdaemon = deb;
                 }
                 control::DullControl::ChildReady => {} // nothing to do
             }

@@ -64,7 +64,7 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: String) -> 
     };
 
     /* the interface is configured for not accept_ra, or accept_ra_dfl */
-    {
+    if !dull.debug.allow_router_advertisement {
         let acceptra = format!("net.ipv6.conf.{}.accept_ra", name);
 
         let ctl = sysctl::Ctl::new(&acceptra).expect(&format!("could not create sysctl '{}'", acceptra));
@@ -139,16 +139,22 @@ async fn exit_child(dull: &mut dull::Dull) {
 }
 
 #[derive(StructOpt)]
+// Hermes Connect Autonomic Control Plane (ACP) manager
 struct ConnectOptions {
-    #[structopt(long, parse(try_from_str))]
+    // turn on debugging from Grasp DULL
+    #[structopt(default_value = "false", long, parse(try_from_str))]
     debug_graspdaemon: bool,
+
+    // permit created DULL interfaces to accept Router Advertisements
+    #[structopt(default_value = "false", long, parse(try_from_str))]
+    allow_ra: bool,
 
     //    bridge_name: String
 
 }
 
-async fn set_debug(dull: &mut dull::Dull, args: &ConnectOptions) {
-    let opt = control::DullControl::GraspDebug { grasp_debug: args.debug_graspdaemon };
+async fn set_debug(dull: &mut dull::Dull) {
+    let opt = control::DullControl::GraspDebug { grasp_debug: dull.debug.debug_graspdaemon };
 
     let result = control::write_control(&mut dull.child_stream, &opt).await;
 
@@ -165,7 +171,10 @@ async fn parent(rt: &tokio::runtime::Runtime, dullinit: dull::DullInit, args: Co
 
     let mut dull = dull::Dull::from_dull_init(dullinit);
 
-    set_debug(&mut dull, &args).await;
+    dull.debug.debug_graspdaemon           = args.debug_graspdaemon;
+    dull.debug.allow_router_advertisement  = args.allow_ra;
+
+    set_debug(&mut dull).await;
 
     // wait for hello from child.
     //println!("waiting for hello from child");

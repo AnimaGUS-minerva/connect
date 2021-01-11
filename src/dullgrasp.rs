@@ -87,7 +87,7 @@ impl GraspDaemon {
         let mut cnt: u32 = 0;
 
         let mut debug_graspdaemon = {
-            dd.lock().await.data.lock().await.debug_graspdaemon
+            dd.lock().await.data.lock().await.debug.debug_graspdaemon
         };
         loop {
             let mut bufbytes = [0u8; 2048];
@@ -165,7 +165,7 @@ impl GraspDaemon {
             }
 
             debug_graspdaemon = {
-                dd.lock().await.data.lock().await.debug_graspdaemon
+                dd.lock().await.data.lock().await.debug.debug_graspdaemon
             };
 
             cnt += 1;
