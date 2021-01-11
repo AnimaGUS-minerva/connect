@@ -166,7 +166,6 @@ impl GraspDaemon {
                     };
 
                     let mut adj = ladj.lock().await;
-                    println!("adding adjancency on {} for {}", adj.ifindex, adj.v6addr);
                     adj.increment();
 
                     /* bring the dang thing up!! */

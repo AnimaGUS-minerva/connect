@@ -145,6 +145,8 @@ impl Adjacency {
             return Ok(());
         }
 
+        println!("adding adjancency on {} for {}", self.ifindex, self.v6addr);
+
         // see if we are trying to bring a tunnel up, and if not, then do so.
         let myll6addr = {
             let ifn = self.interface.lock().await;
