@@ -132,7 +132,7 @@ impl Adjacency {
                 return Err(rtnetlink::Error::RequestFailed);
             }
         };
-        println!("new interface has ifindex: {}", vti_link.header.index);
+        println!("created new ACP interface with ifindex: {}", vti_link.header.index);
         handle.link().set(vti_link.header.index).up().execute().await?;
 
         Ok(())
