@@ -92,6 +92,12 @@ impl GraspDaemon {
         loop {
             let mut bufbytes = [0u8; 2048];
 
+            let myll6addr = {
+                let gdl = gd.lock().await;
+                let ifn = gdl.dullif.lock().await;
+                ifn.linklocal6
+            };
+
             if debug_graspdaemon {
                 println!("listening on GRASP socket {:?}", recv);
             }
@@ -137,6 +143,11 @@ impl GraspDaemon {
                             // continue;
                             //}
                             if adj.v6addr.segments()[0] != 0xfe80 {
+                                continue;
+                            }
+
+                            if adj.v6addr == myll6addr {
+                                // self-announcment
                                 continue;
                             }
 
