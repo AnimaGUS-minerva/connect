@@ -27,6 +27,7 @@ use crate::control;
 use crate::dullgrasp;
 use crate::dullgrasp::GraspDaemon;
 use crate::adjacency::Adjacency;
+use crate::control::DebugOptions;
 
 use nix::unistd::*;
 use nix::sched::unshare;
@@ -64,21 +65,6 @@ use netlink_packet_route::{
  * Prior to doing this, it will create a new dull instance object.
  */
 
-pub struct DullOptions {
-    pub allow_router_advertisement: bool,
-    pub debug_namespaces:  bool,
-    pub debug_graspdaemon: bool
-}
-impl DullOptions {
-    pub fn empty() -> DullOptions {
-        DullOptions {
-            allow_router_advertisement: false,
-            debug_namespaces:  false,
-            debug_graspdaemon: false
-        }
-    }
-}
-
 /* This structure is present in the parent to represent the DULL, before tokio */
 pub struct DullInit {
     pub child_io:      UnixStream,
@@ -87,7 +73,7 @@ pub struct DullInit {
 
 /* This structure is present in the parent to represent the DULL */
 pub struct Dull {
-    pub debug:         DullOptions,
+    pub debug:         DebugOptions,
     pub child_stream:  tokio::net::UnixStream,
     pub dullpid:       Pid
 }
@@ -95,7 +81,7 @@ pub struct Dull {
 impl Dull {
     pub fn from_dull_init(init: DullInit) -> Dull {
         Dull { child_stream: tokio::net::UnixStream::from_std(init.child_io).unwrap(),
-               debug:        DullOptions::empty(),
+               debug:        DebugOptions::empty(),
                dullpid:      init.dullpid }
     }
 }
@@ -132,7 +118,7 @@ impl DullInterface {
 pub struct DullData {
     pub interfaces:    HashMap<u32, Arc<Mutex<DullInterface>>>,
     pub cmd_cnt:       u32,
-    pub debug:         DullOptions,
+    pub debug:         DebugOptions,
     pub exit_now:      bool,
     pub handle:        Option<Handle>
 }
@@ -140,7 +126,7 @@ pub struct DullData {
 impl DullData {
     pub fn empty() -> DullData {
         return DullData { interfaces: HashMap::new(), cmd_cnt: 0,
-                          debug: DullOptions::empty(),
+                          debug: DebugOptions::empty(),
                           exit_now:         false,
                           handle: None
         }

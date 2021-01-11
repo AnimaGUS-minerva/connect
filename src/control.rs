@@ -30,6 +30,21 @@ use tokio::io::{AsyncWriteExt, AsyncReadExt};
 
 use crate::dull::Dull;
 
+pub struct DebugOptions {
+    pub allow_router_advertisement: bool,
+    pub debug_namespaces:  bool,
+    pub debug_graspdaemon: bool
+}
+impl DebugOptions {
+    pub fn empty() -> DebugOptions {
+        DebugOptions {
+            allow_router_advertisement: false,
+            debug_namespaces:  false,
+            debug_graspdaemon: false
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum DullControl {
     Exit,
