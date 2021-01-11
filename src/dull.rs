@@ -106,6 +106,7 @@ pub type IfIndex = u32;
 pub struct DullInterface {
     pub ifindex:       IfIndex,
     pub ifname:        String,
+    pub is_acp:        bool,             /* true if this is a created ACP interface */
     pub mtu:           u32,
     pub linklocal6:    Ipv6Addr,
     pub oper_state:    State,
@@ -119,6 +120,7 @@ impl DullInterface {
             ifindex: ifi,
             ifname:  "".to_string(),
             mtu:     0,
+            is_acp:     false,
             linklocal6: Ipv6Addr::UNSPECIFIED,
             oper_state: State::Down,
             grasp_daemon: None,
@@ -160,6 +162,9 @@ impl DullData {
                 match nlas {
                     Nla::IfName(name) => {
                         println!("ifname: {}", name);
+                        if name[0..3] == "acp_".to_string() {
+                            ifn.is_acp = true;
+                        }
                         ifn.ifname = name;
                     },
                     Nla::Mtu(bytes) => {
@@ -192,10 +197,10 @@ impl DullData {
                 }
             }
             println!("");
-            (ifn.oper_state == State::Down, ifn.ifindex.clone(), ifn.ifname.clone())
+            (ifn.oper_state == State::Down, ifn.ifindex.clone(), ifn.ifname.clone(), ifn.is_acp)
         };
 
-        if results.0 {
+        if !results.3 && results.0 {  /* results.3== is_acp, results.0== Down */
             println!("bringing interface {} up", results.2);
 
             let handle = self.handle.as_ref().unwrap();
@@ -238,6 +243,12 @@ impl DullData {
             }
         }
         println!("");
+
+        /* do nothing for ACP named interfaces */
+        if ifn.is_acp {
+            println!("ignoring acp interface[{}]: {}", ifn.ifindex, ifn.ifname);
+            return None;
+        }
 
         if ifn.oper_state == State::Up {
             match ifn.grasp_daemon {
