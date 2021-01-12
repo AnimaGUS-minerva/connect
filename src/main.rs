@@ -198,7 +198,7 @@ async fn parents(rt: &tokio::runtime::Runtime,
     set_debug(&mut dull).await;
 
     // wait for hello from ACP and then DULL namespace
-    println!("waiting for hello from ACP");
+    println!("waiting for ACP  startup");
     while let Ok(msg) = control::read_control(&mut acp.child_stream).await {
         match msg {
             control::DullControl::ChildReady => break,
@@ -206,7 +206,7 @@ async fn parents(rt: &tokio::runtime::Runtime,
         }
     }
 
-    println!("waiting for hello from ACP");
+    println!("waiting for DULL startup");
     while let Ok(msg) = control::read_control(&mut dull.child_stream).await {
         match msg {
             control::DullControl::ChildReady => break,
