@@ -55,6 +55,9 @@ use netlink_packet_route::{
     RtnlMessage::NewLink,
     RtnlMessage::NewAddress,
     RtnlMessage::NewRoute,
+    RtnlMessage::DelRoute,
+    RtnlMessage::DelAddress,
+    RtnlMessage::DelLink,
     LinkMessage, AddressMessage
 };
 
@@ -197,7 +200,7 @@ impl DullData {
             (action, ifn.ifindex.clone(), ifn.ifname.clone(), ifn.is_acp)
         };
 
-        println!("about interface {}: state: {:?} acp: {:?}", results.2, results.0, results.3);
+        //println!("about interface {}: state: {:?} acp: {:?}", results.2, results.0, results.3);
         if results.3==false && results.0==true {  /* results.3==is_acp (false), results.0==Down */
             println!("bringing interface {} up", results.2);
 
@@ -362,6 +365,18 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
         while let Some((message, _)) = messages.next().await {
             let payload = message.payload;
             match payload {
+                InnerMessage(DelRoute(_stuff)) => {
+                    /* happens when acp_001 is moved to another namespace */
+                    /* need to sort out when it is relevant */
+                }
+                InnerMessage(DelAddress(_stuff)) => {
+                    /* happens when acp_001 is moved to another namespace */
+                    /* need to sort out when it is relevant by looking at name and LinkHeader */
+                }
+                InnerMessage(DelLink(_stuff)) => {
+                    /* happens when acp_001 is moved to another namespace */
+                    /* need to sort out when it is relevant by looking at name and LinkHeader */
+                }
                 InnerMessage(NewLink(stuff)) => {
                     gather_link_info(&child, stuff).await.unwrap();
                 }
