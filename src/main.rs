@@ -28,6 +28,8 @@ use sysctl::Sysctl;
 use structopt::StructOpt;
 use tokio::sync::mpsc;
 use tokio::signal;
+use nix::sys::signal::Signal;
+use nix::sys::signal::kill;
 
 pub mod dull;
 pub mod acp;
@@ -278,6 +280,7 @@ async fn parents(rt: &tokio::runtime::Runtime,
 
     exit_child(&mut dull.child_stream).await;
     exit_child(&mut acp.child_stream).await;
+    delay_for(Duration::from_millis(100)).await;
     kill(dull.dullpid, Signal::SIGINT).unwrap();
     kill(acp.acppid, Signal::SIGINT).unwrap();
 
