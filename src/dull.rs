@@ -197,7 +197,8 @@ impl DullData {
             (action, ifn.ifindex.clone(), ifn.ifname.clone(), ifn.is_acp)
         };
 
-        if !results.3 && results.0 {  /* results.3== is_acp, results.0== Down */
+        println!("about interface {}: state: {:?} acp: {:?}", results.2, results.0, results.3);
+        if results.3==false && results.0==true {  /* results.3==is_acp (false), results.0==Down */
             println!("bringing interface {} up", results.2);
 
             let handle = self.handle.as_ref().unwrap();
