@@ -45,16 +45,27 @@ static VERSION: &str = "1.0.0";
 // static mut ARGC: isize = 0 as isize;
 // static mut ARGV: *mut *mut i8 = 0 as *mut *mut i8;
 
-async fn addremove_dull_bridge(handle: &Handle, _dull: &dull::Dull, _name: &String, masterlink: u32) -> Result<(), Error> {
+async fn addremove_dull_bridge(updown: bool,
+                               handle: &Handle, _dull: &dull::Dull,
+                               _name: &String, masterlink: u32) -> Result<(), Error> {
     let mut pull0 = handle.link().get().set_name_filter("pull0".to_string()).execute();
     if let Some(link) = pull0.try_next().await? {
-        // put the interface down
-        handle
-            .link()
-            .set(link.header.index)
-            .down()
-            .execute()
-            .await?;
+        // put the interface up or down
+        if updown {
+            handle
+                .link()
+                .set(link.header.index)
+                .up()
+                .execute()
+                .await?;
+        } else {
+            handle
+                .link()
+                .set(link.header.index)
+                .down()
+                .execute()
+                .await?;
+        }
 
         // add/remove it into the trusted bridge
         handle
@@ -128,7 +139,7 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: &String) ->
         return Ok(());
     }
 
-    addremove_dull_bridge(handle, dull, name, trusted_link.header.index).await?;
+    addremove_dull_bridge(true, handle, dull, name, trusted_link.header.index).await?;
     return Ok(());
 }
 
@@ -276,7 +287,7 @@ async fn parents(rt: &tokio::runtime::Runtime,
     println!("\nshutting down children");
 
     // remove from the bridge
-    addremove_dull_bridge(&handle, &dull, &bridgename, 0).await.unwrap();
+    addremove_dull_bridge(false, &handle, &dull, &bridgename, 0).await.unwrap();
 
     exit_child(&mut dull.child_stream).await;
     exit_child(&mut acp.child_stream).await;
