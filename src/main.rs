@@ -90,7 +90,7 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: &String) ->
 
     /* the interface is configured for not accept_ra, or accept_ra_dfl */
     if !dull.debug.allow_router_advertisement {
-        println!("turn off router advertisements");
+        println!("turning off router advertisements");
         let acceptra = format!("net.ipv6.conf.{}.accept_ra", name);
 
         let ctl = sysctl::Ctl::new(&acceptra).expect(&format!("could not create sysctl '{}'", acceptra));
@@ -271,13 +271,15 @@ async fn parents(rt: &tokio::runtime::Runtime,
         }
     }
 
-    println!("shutting down children");
+    println!("\nshutting down children");
 
     // remove from the bridge
     addremove_dull_bridge(&handle, &dull, &bridgename, 0).await.unwrap();
 
     exit_child(&mut dull.child_stream).await;
     exit_child(&mut acp.child_stream).await;
+    kill(dull.dullpid, Signal::SIGINT).unwrap();
+    kill(acp.acppid, Signal::SIGINT).unwrap();
 
     return Ok(());
 }
