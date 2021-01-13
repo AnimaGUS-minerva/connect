@@ -42,7 +42,29 @@ static VERSION: &str = "1.0.0";
 // static mut ARGC: isize = 0 as isize;
 // static mut ARGV: *mut *mut i8 = 0 as *mut *mut i8;
 
-async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: String) -> Result<(), Error> {
+async fn addremove_dull_bridge(handle: &Handle, _dull: &dull::Dull, _name: &String, masterlink: u32) -> Result<(), Error> {
+    let mut pull0 = handle.link().get().set_name_filter("pull0".to_string()).execute();
+    if let Some(link) = pull0.try_next().await? {
+        // put the interface down
+        handle
+            .link()
+            .set(link.header.index)
+            .down()
+            .execute()
+            .await?;
+
+        // add/remove it into the trusted bridge
+        handle
+            .link()
+            .set(link.header.index)
+            .master(masterlink)
+            .execute()
+            .await?;
+    }
+    Ok(())
+}
+
+async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: &String) -> Result<(), Error> {
     let mut trusted = handle.link().get().set_name_filter("trusted".to_string()).execute();
     let trusted_link = match trusted.try_next().await? {
         Some(link) => link,
@@ -101,35 +123,14 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: String) -> 
         return Ok(());
     }
 
-    let mut pull0 = handle.link().get().set_name_filter("pull0".to_string()).execute();
-    if let Some(link) = pull0.try_next().await? {
-        // put the interface up
-        handle
-            .link()
-            .set(link.header.index)
-            .up()
-            .execute()
-            .await?;
-
-        // put it into the trusted bridge
-        handle
-            .link()
-            .set(link.header.index)
-            .master(trusted_link.header.index)
-            .execute()
-            .await?;
-    } else {
-        println!("no link link {} found", "pull0");
-        return Ok(());
-    }
-
-
-
+    addremove_dull_bridge(handle, dull, name, trusted_link.header.index).await?;
     return Ok(());
 }
 
-async fn exit_child(dull: &mut dull::Dull) {
-    let result = control::write_control(&mut dull.child_stream, &control::DullControl::Exit).await;
+
+// rewrite with new Trait that takes Acp or Dull.
+async fn exit_child(stream: &mut tokio::net::UnixStream) {
+    let result = control::write_control(stream, &control::DullControl::Exit).await;
 
     match result  {
         Err(e) => match e.kind() {
@@ -223,19 +224,21 @@ async fn parents(rt: &tokio::runtime::Runtime,
     rt.spawn(connection);
 
     //println!("creating dull0");
-    let bridge = setup_dull_bridge(&handle, &dull, "dull0".to_string()).await;
+    let bridgename = "dull0".to_string();
+    let bridge = setup_dull_bridge(&handle, &dull, &bridgename).await;
     match bridge {
         Err(e) => { println!("Failing to create dull: {}", e); return Ok(()); },
         _ => {}
     };
-
     //println!("created dull0");
 
-    /* now shutdown the child after the delay */
-    delay_for(Duration::from_millis(200000)).await;
-    exit_child(&mut dull).await;
 
-    println!("child shutdown");
+    // remove from the bridge
+    addremove_dull_bridge(&handle, &dull, &bridgename, 0).await.unwrap();
+
+    exit_child(&mut dull.child_stream).await;
+    exit_child(&mut acp.child_stream).await;
+
     return Ok(());
 }
 
