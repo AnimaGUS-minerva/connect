@@ -195,7 +195,7 @@ async fn parents(rt: &tokio::runtime::Runtime,
 
     dull.debug.debug_graspdaemon           = args.debug_graspdaemon;
     dull.debug.allow_router_advertisement  = args.allow_ra;
-    let alivecycles = args.salive * 1000 * 2;
+    let mut alivecycles = args.salive * 1000 * 2;
 
     // tell the DULL namespace the debug values
     set_debug(&mut dull).await;
