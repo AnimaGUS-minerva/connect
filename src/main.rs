@@ -168,6 +168,10 @@ struct ConnectOptions {
     #[structopt(default_value = "false", long, parse(try_from_str))]
     allow_ra: bool,
 
+    // how long to remain running, in seconds
+    #[structopt(default_value = "86400", long, parse(try_from_str))]
+    salive: u32,
+
     //    bridge_name: String
 
 }
@@ -210,6 +214,7 @@ async fn parents(rt: &tokio::runtime::Runtime,
 
     dull.debug.debug_graspdaemon           = args.debug_graspdaemon;
     dull.debug.allow_router_advertisement  = args.allow_ra;
+    let alivecycles = args.salive * 1000 * 2;
 
     // tell the DULL namespace the debug values
     set_debug(&mut dull).await;
@@ -269,13 +274,12 @@ async fn parents(rt: &tokio::runtime::Runtime,
     );
 
     /* wait for signal to end */
-    let mut cycles_to_end = (200) * (2);  /* 200s * 1/2 tick */
     while let Some(value) = receiver.recv().await {
         //println!("spun {}", cycles_to_end);
         match value {
             0 => {
-                cycles_to_end -= 1;
-                if cycles_to_end == 0 {
+                alivecycles -= 1;
+                if alivecycles == 0 {
                     break;
                 }
             },
