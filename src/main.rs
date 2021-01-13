@@ -89,6 +89,7 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: &String) ->
 
     /* the interface is configured for not accept_ra, or accept_ra_dfl */
     if !dull.debug.allow_router_advertisement {
+        println!("turn off router advertisements");
         let acceptra = format!("net.ipv6.conf.{}.accept_ra", name);
 
         let ctl = sysctl::Ctl::new(&acceptra).expect(&format!("could not create sysctl '{}'", acceptra));
@@ -103,6 +104,7 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: &String) ->
             panic!("Could not set value. Error: {:?}", e);
         });
     }
+
 
     let mut dull0 = handle.link().get().set_name_filter(name.clone()).execute();
     if let Some(link) = dull0.try_next().await? {
