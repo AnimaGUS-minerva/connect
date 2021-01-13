@@ -163,12 +163,15 @@ impl DullData {
                         println!("lladdr: {:0x}:{:0x}:{:0x}:{:0x}:{:0x}:{:0x}", addrset[0], addrset[1], addrset[2], addrset[3], addrset[4], addrset[5]);
                     },
                     Nla::OperState(state) => {
-                        if state == State::Up {
-                            println!("device is up");
-                        } else {
-                            println!("device is down: {:?}", state);
-                        }
-                        ifn.oper_state = state;
+                        match state {
+                            State::Up => {
+                                println!("device is up");
+                                ifn.oper_state = state;
+                            },
+                            _ => {
+                                println!("device is not up: {:?}", state);
+                            }
+                        };
                     },
                     Nla::AfSpecInet(inets) => {
                         for ip in inets {
@@ -187,7 +190,11 @@ impl DullData {
                 }
             }
             println!("");
-            (ifn.oper_state == State::Down, ifn.ifindex.clone(), ifn.ifname.clone(), ifn.is_acp)
+            let action = match ifn.oper_state {
+                State::Down => { true },
+                _ => { false }
+            };
+            (action, ifn.ifindex.clone(), ifn.ifname.clone(), ifn.is_acp)
         };
 
         if !results.3 && results.0 {  /* results.3== is_acp, results.0== Down */
