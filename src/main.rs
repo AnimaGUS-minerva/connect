@@ -27,6 +27,7 @@ use tokio::time::{delay_for, Duration};
 use sysctl::Sysctl;
 use structopt::StructOpt;
 use tokio::sync::mpsc;
+use tokio::signal;
 
 pub mod dull;
 pub mod acp;
@@ -235,6 +236,15 @@ async fn parents(rt: &tokio::runtime::Runtime,
     //println!("created dull0");
 
     let (mut sender, mut receiver) = mpsc::channel(2);
+
+    let mut ctrlsend = sender.clone();
+    rt.spawn(async move {
+        loop {
+            signal::ctrl_c().await.unwrap();
+            ctrlsend.send(1).await.unwrap();
+            delay_for(Duration::from_millis(500)).await;
+        }
+    });
 
     /* send a signal every 500ms */
     rt.spawn(async move {
