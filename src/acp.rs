@@ -19,7 +19,7 @@ extern crate nix;
 extern crate tokio;
 
 use std::fs::OpenOptions;
-//use std::fs::File;
+use crate::sysctl::Sysctl;
 use gag::Redirect;
 
 use std::sync::Arc;
@@ -239,7 +239,7 @@ impl AcpData {
         }
 
         if ifn.oper_state == State::Up {
-            println!("turning up");
+            println!("{} is up", ifn.ifname);
         }
         return None;
     }
@@ -341,9 +341,23 @@ async fn listen_network(childinfo: &Arc<Mutex<AcpChild>>) -> Result<tokio::task:
                 InnerMessage(NewAddress(stuff)) => {
                     let sifn = gather_addr_info(&child, stuff).await.unwrap();
 
-                    if let Some(_lifn) = sifn {
-                        // do something with this interface
-                        println!("interface found");
+                    if let Some(lifn) = sifn {
+                        let ifn = lifn.lock().await;
+
+                        if ifn.is_acp {
+                            // do something with this interface
+                            let policy6 = format!("net.ipv6.conf.{}.disable_policy", ifn.ifname);
+                            let ctl = sysctl::Ctl::new(&policy6).expect(&format!("could not create sysctl '{}'", policy6));
+                            let _ovalue = ctl.set_value_string("1").unwrap_or_else(|e| {
+                                panic!("Could not set disable v6 policy value. Error: {:?}", e);
+                            });
+
+                            let policy4 = format!("net.ipv4.conf.{}.disable_policy", ifn.ifname);
+                            let ctl = sysctl::Ctl::new(&policy4).expect(&format!("could not create sysctl '{}'", policy4));
+                            let _ovalue = ctl.set_value_string("1").unwrap_or_else(|e| {
+                                panic!("Could not set disable v4 policy value. Error: {:?}", e);
+                            });
+                        }
                     }
                 }
                 InnerMessage(NewRoute(_thing)) => {

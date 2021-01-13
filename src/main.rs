@@ -170,7 +170,7 @@ async fn set_debug(dull: &mut dull::Dull) {
 }
 
 async fn set_acp_ns(dull: &mut dull::Dull, acpns: Pid) {
-    let opt = control::DullControl::DullNamespace { namespace_id: acpns.as_raw() as u32};
+    let opt = control::DullControl::DullNamespace { namespace_id: acpns.as_raw() as i32};
 
     let result = control::write_control(&mut dull.child_stream, &opt).await;
 
