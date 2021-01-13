@@ -39,6 +39,7 @@ use std::net::Ipv6Addr;
 use std::collections::HashMap;
 use std::process::Command;
 use std::convert::TryInto;
+use sysctl::Sysctl;
 
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
@@ -201,8 +202,11 @@ impl DullData {
         };
 
         //println!("about interface {}: state: {:?} acp: {:?}", results.2, results.0, results.3);
-        if results.3==false && results.0==true {  /* results.3==is_acp (false), results.0==Down */
+        if results.3==false && results.0==true {
+            /* results.3==is_acp (false), results.0==Down */
             println!("bringing interface {} up", results.2);
+
+            let name = results.2;
 
             let handle = self.handle.as_ref().unwrap();
 
@@ -212,6 +216,25 @@ impl DullData {
                 .up()
                 .execute()
                 .await.unwrap();
+
+            /* the interface is now configured for not accept_ra, or accept_ra_dfl */
+            if !self.debug.allow_router_advertisement {
+                println!("turning off router advertisements");
+                let acceptra = format!("net.ipv6.conf.{}.accept_ra", name);
+
+                let ctl = sysctl::Ctl::new(&acceptra).expect(&format!("could not create sysctl '{}'", acceptra));
+                let _ovalue = ctl.set_value_string("0").unwrap_or_else(|e| {
+                    panic!("Could not set value. Error: {:?}", e);
+                });
+
+                let acceptra_defrtr = format!("net.ipv6.conf.{}.accept_ra_defrtr", name);
+
+                let ctl = sysctl::Ctl::new(&acceptra_defrtr).expect(&format!("could not create sysctl '{}'", acceptra));
+                let _ovalue = ctl.set_value_string("0").unwrap_or_else(|e| {
+                    panic!("Could not set value. Error: {:?}", e);
+                });
+            }
+
         }
         return ();
     }

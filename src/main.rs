@@ -24,7 +24,7 @@ use netlink_packet_route::ErrorMessage;
 use std::io::ErrorKind;
 use tokio::time::{delay_for, Duration};
 //use std::os::unix::net::UnixStream;
-use sysctl::Sysctl;
+//use sysctl::Sysctl;
 use structopt::StructOpt;
 use tokio::sync::mpsc;
 use tokio::signal;
@@ -100,25 +100,6 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: &String) ->
             std::process::exit(0);
         }
     };
-
-    /* the interface is configured for not accept_ra, or accept_ra_dfl */
-    if !dull.debug.allow_router_advertisement {
-        println!("turning off router advertisements");
-        let acceptra = format!("net.ipv6.conf.{}.accept_ra", name);
-
-        let ctl = sysctl::Ctl::new(&acceptra).expect(&format!("could not create sysctl '{}'", acceptra));
-        let _ovalue = ctl.set_value_string("0").unwrap_or_else(|e| {
-            panic!("Could not set value. Error: {:?}", e);
-        });
-
-        let acceptra_defrtr = format!("net.ipv6.conf.{}.accept_ra_defrtr", name);
-
-        let ctl = sysctl::Ctl::new(&acceptra_defrtr).expect(&format!("could not create sysctl '{}'", acceptra));
-        let _ovalue = ctl.set_value_string("0").unwrap_or_else(|e| {
-            panic!("Could not set value. Error: {:?}", e);
-        });
-    }
-
 
     let mut dull0 = handle.link().get().set_name_filter(name.clone()).execute();
     if let Some(link) = dull0.try_next().await? {
