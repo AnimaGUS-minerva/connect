@@ -59,6 +59,7 @@ pub fn create(tunname: &str,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nix::unistd::Uid;
 
     #[test]
     fn test_vtitun() {
@@ -66,8 +67,10 @@ mod tests {
         let tunloc  = "fe80::5054:ff:fe51:12bc".parse::<Ipv6Addr>().unwrap();
         let tunrem  = "fe80::5054:ff:fe51:daff".parse::<Ipv6Addr>().unwrap();
 
-        let x = create(tunname, tunloc, tunrem, 7);
-        assert_eq!(x.is_ok(), true);
+        if Uid::current().is_root() {
+            let x = create(tunname, tunloc, tunrem, 7);
+            assert_eq!(x.is_ok(), true);
+        }
     }
 }
 
