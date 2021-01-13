@@ -26,7 +26,7 @@ use tokio::time::{delay_for, Duration};
 //use std::os::unix::net::UnixStream;
 use sysctl::Sysctl;
 use structopt::StructOpt;
-
+use tokio::sync::mpsc;
 
 pub mod dull;
 pub mod acp;
@@ -234,6 +234,32 @@ async fn parents(rt: &tokio::runtime::Runtime,
     };
     //println!("created dull0");
 
+    let (mut sender, mut receiver) = mpsc::channel(2);
+
+    /* send a signal every 500ms */
+    rt.spawn(async move {
+        loop {
+            delay_for(Duration::from_millis(500)).await;
+            sender.send(0).await.unwrap();
+        }}
+    );
+
+    /* wait for signal to end */
+    let mut cycles_to_end = (200) * (2);  /* 200s * 1/2 tick */
+    while let Some(value) = receiver.recv().await {
+        match value {
+            0 => {
+                cycles_to_end -= 1;
+                if cycles_to_end == 0 {
+                    break;
+                }
+            },
+            1 => { break; }
+            _ => {}
+        }
+    }
+
+    println!("child shutting down");
 
     // remove from the bridge
     addremove_dull_bridge(&handle, &dull, &bridgename, 0).await.unwrap();
