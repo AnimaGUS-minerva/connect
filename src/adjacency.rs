@@ -95,6 +95,8 @@ impl Adjacency {
 
     pub async fn make_vti(self: &mut Adjacency) -> Result<(), rtnetlink::Error> {
 
+        let handle;
+        let vn;
         let ifn = self.interface.lock().await;
 
         let lgd = match &ifn.grasp_daemon {
@@ -103,12 +105,13 @@ impl Adjacency {
         };
 
         let mut dc = lgd.dullchild.lock().await;
-        let vn = dc.allocate_vti();
+        vn = dc.allocate_vti();
         self.vti_number = Some(vn);
 
         let dd = dc.data.lock().await;
+        let acpns = dd.acpns;
 
-        let handle = match &dd.handle {
+        handle = match &dd.handle {
             None => { return Ok(()); },
             Some(handle) => handle
         };
@@ -132,8 +135,19 @@ impl Adjacency {
                 return Err(rtnetlink::Error::RequestFailed);
             }
         };
-        println!("created new ACP interface with ifindex: {}", vti_link.header.index);
+        println!("created new ACP interface with ifindex: {}, moved to NS {}",
+                 vti_link.header.index,
+                 acpns);
+
         handle.link().set(vti_link.header.index).up().execute().await?;
+
+        // now move this created entity to the ACP NS.
+        handle
+            .link()
+            .set(vti_link.header.index)
+            .setns_by_pid(acpns.as_raw() as u32)
+            .execute()
+            .await?;
 
         Ok(())
     }

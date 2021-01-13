@@ -129,6 +129,7 @@ impl DullData {
         return DullData { interfaces: HashMap::new(), cmd_cnt: 0,
                           debug: DebugOptions::empty(),
                           exit_now:         false,
+                          acpns:            Pid::this(),
                           handle: None
         }
     }
