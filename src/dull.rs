@@ -42,7 +42,7 @@ use std::convert::TryInto;
 use sysctl::Sysctl;
 
 use futures::lock::Mutex;
-use futures::stream::StreamExt;
+use futures::stream::{StreamExt, TryStreamExt};
 use netlink_packet_route::link::nlas::AfSpecInet;
 use netlink_packet_route::link::nlas::State;
 use rtnetlink::{
@@ -126,6 +126,18 @@ pub struct DullData {
     pub debug:         DebugOptions,
     pub exit_now:      bool,
     pub handle:        Option<Handle>
+}
+
+pub async fn child_lo_up(handle: &Handle) {
+    let mut lo = handle.link().get().set_name_filter("lo".to_string()).execute();
+    if let Some(link) = lo.try_next().await.unwrap() {
+        handle
+            .link()
+            .set(link.header.index)
+            .up()
+            .execute()
+            .await.unwrap();
+    }
 }
 
 impl DullData {
@@ -379,8 +391,11 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
         connection.socket_mut().bind(&addr).expect("failed to bind");
         rt.spawn(connection);
 
+        child_lo_up(&handle).await;
+
         {
             let  mychild = child.lock().await;
+
             let mut data = mychild.data.lock().await;
             data.handle  = Some(handle);
         }

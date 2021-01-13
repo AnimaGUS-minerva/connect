@@ -26,6 +26,7 @@ use std::sync::Arc;
 use crate::control;
 use crate::control::DebugOptions;
 use crate::dull::IfIndex;
+use crate::dull::child_lo_up;
 
 use nix::unistd::*;
 use nix::sched::unshare;
@@ -325,6 +326,8 @@ async fn listen_network(childinfo: &Arc<Mutex<AcpChild>>) -> Result<tokio::task:
         // Said address is bound so new conenctions and thus new message broadcasts can be received.
         connection.socket_mut().bind(&addr).expect("failed to bind");
         rt.spawn(connection);
+
+        child_lo_up(&handle).await;
 
         {
             let  mychild = child.lock().await;
