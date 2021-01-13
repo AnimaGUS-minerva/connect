@@ -165,6 +165,8 @@ impl DullData {
                     Nla::OperState(state) => {
                         if state == State::Up {
                             println!("device is up");
+                        } else {
+                            println!("device is down: {:?}", state);
                         }
                         ifn.oper_state = state;
                     },
