@@ -239,6 +239,7 @@ async fn parents(rt: &tokio::runtime::Runtime,
     /* send a signal every 500ms */
     rt.spawn(async move {
         loop {
+            //println!("spin");
             delay_for(Duration::from_millis(500)).await;
             sender.send(0).await.unwrap();
         }}
@@ -247,6 +248,7 @@ async fn parents(rt: &tokio::runtime::Runtime,
     /* wait for signal to end */
     let mut cycles_to_end = (200) * (2);  /* 200s * 1/2 tick */
     while let Some(value) = receiver.recv().await {
+        //println!("spun {}", cycles_to_end);
         match value {
             0 => {
                 cycles_to_end -= 1;
@@ -259,7 +261,7 @@ async fn parents(rt: &tokio::runtime::Runtime,
         }
     }
 
-    println!("child shutting down");
+    println!("shutting down children");
 
     // remove from the bridge
     addremove_dull_bridge(&handle, &dull, &bridgename, 0).await.unwrap();
