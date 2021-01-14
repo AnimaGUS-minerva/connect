@@ -222,12 +222,16 @@ impl DullData {
 
             let handle = self.handle.as_ref().unwrap();
 
-            handle
+            let result = handle
                 .link()
                 .set(results.1)
                 .up()
                 .execute()
-                .await.unwrap();
+                .await;
+            match result {
+                Err(err) => { println!("bringing interface {}({}) up: {:?}", name, results.1, err); },
+                _ => {}
+            };
 
             /* the interface is now configured for not accept_ra, or accept_ra_dfl */
             if !self.debug.allow_router_advertisement {
