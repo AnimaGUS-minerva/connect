@@ -120,7 +120,7 @@ impl Adjacency {
         let laddr = ifn.linklocal6.clone();
         let raddr = self.v6addr.clone();
 
-        vtitun::create(&self.vti_iface, laddr, raddr, vn).unwrap();
+        vtitun::create(&self.vti_iface, ifn.ifindex, laddr, raddr, vn).unwrap();
 
         let mut vtiresult = handle.link().get().set_name_filter(self.vti_iface.clone()).execute();
         let vti_next = vtiresult.try_next().await;

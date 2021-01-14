@@ -19,16 +19,19 @@ use std::os::raw::{c_char, c_uint, c_int};
 use std::ffi::CString;
 use std::net::Ipv6Addr;
 use std::io::Error;
+use crate::dull::IfIndex;
 
 extern {
     fn create_vti6_tunnel(tunname: *const c_char,
                           tunkey:  c_uint,
+                          physdev_ifindex: c_uint,
                           tunloc:  *const c_char,  /* should be IPv6 address, presentation form */
                           tunrem:  *const c_char) -> c_int;
 }
 
 
 pub fn create(tunname: &str,
+              physdev_index: IfIndex,
               tunloc: Ipv6Addr,
               tunrem: Ipv6Addr,
               tunkey: u16) -> Result<(), std::io::Error> {
@@ -42,6 +45,7 @@ pub fn create(tunname: &str,
     let tunrem_c  = CString::new(tunrem_a).unwrap();
     let result = unsafe {
         create_vti6_tunnel(tunname_c.as_ptr(), tunkey as u32,
+                           physdev_index as u32,
                            tunloc_c.as_ptr(), tunrem_c.as_ptr())
     };
     if result == 0 {
@@ -66,9 +70,10 @@ mod tests {
         let tunname = "test6";
         let tunloc  = "fe80::5054:ff:fe51:12bc".parse::<Ipv6Addr>().unwrap();
         let tunrem  = "fe80::5054:ff:fe51:daff".parse::<Ipv6Addr>().unwrap();
+        let physdev_ifindex = 1;  /* usually loopback */
 
         if Uid::current().is_root() {
-            let x = create(tunname, tunloc, tunrem, 7);
+            let x = create(tunname, physdev_ifindex, tunloc, tunrem, 7);
             assert_eq!(x.is_ok(), true);
         }
     }

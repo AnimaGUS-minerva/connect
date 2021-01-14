@@ -69,7 +69,7 @@ static size_t strlcpy(char *dst, const char *src, size_t size)
  */
 static void init_my_tunnel(struct ip6_tnl_parm2 *p, const char *tunname,
                            const char *local, const char *remote,
-                           unsigned key)
+                           unsigned key, unsigned int phys_index)
 {
         struct in6_addr raddr, laddr;
 
@@ -84,6 +84,7 @@ static void init_my_tunnel(struct ip6_tnl_parm2 *p, const char *tunname,
 
         p->i_flags |= GRE_KEY;
         p->o_flags |= GRE_KEY;
+        p->link     = phys_index;
         p->i_key = p->o_key = htonl(key);  /* key ... in network byte order... */
 
         strlcpy(p->name, tunname, sizeof(p->name-1));
@@ -100,6 +101,7 @@ static void ip6_tnl_parm_init(struct ip6_tnl_parm2 *p, int apply_default)
 }
 
 int create_vti6_tunnel(const char *tunname, unsigned int key,
+                       unsigned int physdev_ifindex,
                        const char *local, const char *remote)
 {
   struct ip6_tnl_parm2 p;
@@ -111,7 +113,7 @@ int create_vti6_tunnel(const char *tunname, unsigned int key,
   //printf("Creating new tunnel: %s\n", tunname);
 
   ip6_tnl_parm_init(&p, 1);
-  init_my_tunnel(&p, tunname, local, remote, key);
+  init_my_tunnel(&p, tunname, local, remote, key, physdev_ifindex);
 
   if (p.i_flags & VTI_ISVTI)
     basedev = "ip6_vti0";
