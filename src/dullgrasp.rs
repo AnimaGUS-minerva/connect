@@ -211,7 +211,7 @@ impl GraspDaemon {
         let flood = grasp::GraspMessage { mtype: GraspMessageType::M_FLOOD,
                                           session_id: sesid,
                                           initiator: myllv6,
-                                          ttl: 1,
+                                          ttl: 10000,
                                           objectives: vec![acp_objective] };
 
         GraspMessage::encode_dull_grasp_message(flood)
