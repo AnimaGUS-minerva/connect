@@ -144,7 +144,7 @@ impl AcpData {
                 match nlas {
                     Nla::IfName(name) => {
                         println!("ifname: {}", name);
-                        if name[0..4] == "acp_".to_string() {
+                        if name.len() > 3 && name[0..4] == "acp_".to_string() {
                             ifn.is_acp = true;
                         }
                         ifn.ifname = name;
