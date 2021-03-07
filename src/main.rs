@@ -79,10 +79,10 @@ async fn addremove_dull_bridge(updown: bool,
 }
 
 async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: &String) -> Result<(), Error> {
-    let mut trusted = handle.link().get().set_name_filter("trusted".to_string()).execute();
+    let mut trusted = handle.link().get().set_name_filter("ietf".to_string()).execute();
     let trusted_link = match trusted.try_next().await? {
         Some(link) => link,
-        None => { println!("did not find bridge \"trusted\""); return Ok(()); }
+        None => { println!("did not find bridge \"ietf\""); return Ok(()); }
     };
     // if no such bridge, then do a macvlan on eth0!
 
