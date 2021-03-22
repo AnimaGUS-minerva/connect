@@ -153,6 +153,7 @@ impl Adjacency {
     }
 
     pub async fn up(self: &mut Adjacency) -> Result<(), rtnetlink::Error> {
+        // A VTI will have been assigned already if we already trying to bring a tunnel up.
         if self.vti_number == None {
             self.make_vti().await?;
         } else {
@@ -161,7 +162,6 @@ impl Adjacency {
 
         println!("adding adjancency on {} for {}", self.ifindex, self.v6addr);
 
-        // see if we are trying to bring a tunnel up, and if not, then do so.
         let myll6addr = {
             let ifn = self.interface.lock().await;
             ifn.linklocal6
