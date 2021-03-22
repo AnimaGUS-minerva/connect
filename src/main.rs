@@ -40,6 +40,7 @@ pub mod error;
 pub mod graspsamples;
 pub mod adjacency;
 pub mod vtitun;
+pub mod openswan;
 
 static VERSION: &str = "1.0.0";
 // static mut ARGC: isize = 0 as isize;
