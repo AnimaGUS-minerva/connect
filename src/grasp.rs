@@ -272,6 +272,16 @@ fn decode_base_grasp(contents: &Vec<CborType>) -> Result<(u32, u32), ConnectErro
         CborType::Integer(num) => num as u32,
         _ => return Err(ConnectError::MisformedGraspMessage)
     };
+
+    // check for NOOP first.
+    if msgtype == 0 {
+        return Ok((msgtype, 0));
+    }
+
+    if contents.len() < 2 {
+        return Err(ConnectError::MisformedGraspMessage);
+    }
+
     let session_id = match contents[1] {
         CborType::Integer(id) => id as u32,
         _ => return Err(ConnectError::MisformedGraspMessage)
@@ -427,7 +437,7 @@ impl GraspMessage {
 
     pub fn decode_dull_grasp_message(thing: CborType) -> Result<GraspMessage, ConnectError> {
         match thing {
-            CborType::Array(contents) if contents.len() >= 2 => {
+            CborType::Array(contents) if contents.len() >= 1 => {
                 let (msgtype, session_id) = decode_base_grasp(&contents)?;
                 match msgtype {
                     0 => Self::decode_grasp_noop(session_id, &contents),
@@ -495,6 +505,19 @@ pub mod tests {
 
         assert_eq!(s001[0], 0x85);   /* beginning of array */
         let thing = decode(s001).unwrap();
+        GraspMessage::decode_grasp_message(thing)?;
+
+        Ok(())
+    }
+
+    #[test]
+    // test processing of GRASP NOOP, which does not follow the standard pattern for other
+    // messages.
+    fn test_parse_grasp_s02() -> Result<(), ConnectError> {
+        let s002 = &graspsamples::PACKET_S02;
+
+        assert_eq!(s002[0], 0x81);   /* beginning of array */
+        let thing = decode(s002).unwrap();
         GraspMessage::decode_grasp_message(thing)?;
 
         Ok(())
