@@ -431,6 +431,13 @@ impl GraspMessage {
                     _ => return Err(ConnectError::MisformedGraspMessage)
                 }
             },
+            CborType::Array(contents) if contents.len() >= 1 => {
+                let (msgtype, session_id) = decode_base_grasp(&contents)?;
+                match msgtype {
+                    0 => Self::decode_grasp_noop(session_id, &contents),
+                    _ => return Err(ConnectError::MisformedGraspMessage)
+                }
+            },
             _ => return Err(ConnectError::MisformedGraspMessage)
         }
     }
