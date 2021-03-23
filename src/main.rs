@@ -41,6 +41,7 @@ pub mod graspsamples;
 pub mod adjacency;
 pub mod vtitun;
 pub mod openswan;
+pub mod openswanwhack;
 
 static VERSION: &str = "1.0.0";
 // static mut ARGC: isize = 0 as isize;
