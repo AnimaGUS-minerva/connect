@@ -105,7 +105,7 @@ impl OpenswanWhackInterface {
             .arg("--ctlbase")
             .arg("/run/pluto")
             .arg("--stderrlog")
-            .arg("--use--netkey")
+            .arg("--use-netkey")
             .arg("--nhelpers")
             .arg("1")
             .status()
