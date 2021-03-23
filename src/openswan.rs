@@ -60,7 +60,7 @@ impl OpenswanWhackInterface {
         return cbor.serialize();
     }
 
-    pub fn openswan_status() -> Vec<u8> {
+    pub fn openswan_status_encoded() -> Vec<u8> {
         let mut statusoption_map: BTreeMap<CborType, CborType> = BTreeMap::new();
         statusoption_map.insert(CborType::Integer(openswanwhack::statusoptions_keys::WHACK_STAT_OPTIONS as u64),
                                 CborType::Integer(1));
@@ -70,6 +70,19 @@ impl OpenswanWhackInterface {
                            CborType::Map(statusoption_map));
 
         return CborType::Map(command_map).serialize();
+    }
+
+    async fn openswan_send_cmd(cmdbytes) -> Result<String, std::io::Error> {
+        let mut osw = OpenswanWhackInterface::connect().await?;
+
+        let bytes1 = OpenswanWhackInterface::openswan_tag();
+
+        osw.ctrl_sock.write_all(&bytes1).await?;
+        osw.ctrl_sock.write_all(&cmdbytes).await?;
+
+        let mut results = String::new();
+        osw.ctrl_sock.read_to_string(&mut results).await?;
+        return Ok(results)
     }
 }
 
@@ -95,20 +108,10 @@ mod tests {
 //        blah = CborType::Map()
 //    }
 //
-    async fn openswan_status() ->  Result<(), std::io::Error> {
-        let mut osw = OpenswanWhackInterface::connect().await?;
-
-        let bytes1 = OpenswanWhackInterface::openswan_tag();
-        let bytes2 = OpenswanWhackInterface::openswan_status();
-
-        osw.ctrl_sock.write_all(&bytes1).await?;
-        osw.ctrl_sock.write_all(&bytes2).await?;
-
-        let mut results = String::new();
-        osw.ctrl_sock.read_to_string(&mut results).await?;
+    async fn openswan_status() -> Result<(), std::io::Error> {
+        let results = openswan_send_cmd(OpenswanWhackInterface::openswan_status());
         println!("status\n{}", results);
 
-        //delay_for(Duration::from_millis(25000)).await;
         Ok(())
     }
 
