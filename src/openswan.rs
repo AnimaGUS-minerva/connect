@@ -31,6 +31,7 @@ use tokio::net::UnixStream;
 use cbor::CborType;
 use tokio::io::AsyncWriteExt;
 use tokio::io::AsyncReadExt;
+use std::process::{Command, ExitStatus};
 use crate::openswanwhack;
 
 //use crate::dull::DullInterface;
@@ -40,8 +41,7 @@ pub struct OpenswanWhackInterface {
     pub ctrl_sock: UnixStream,
 }
 
-//const OPENSWAN_CONTROL_PATH:   &str = "/var/run/pluto/pluto.ctl";
-const OPENSWAN_CONTROL_PATH:   &str = "/osw/t11228-xfrm-with-vti/tests/functional/23-vti-mark/OUTPUT/base.ctl";
+const OPENSWAN_CONTROL_PATH:   &str = "/run/pluto/pluto.ctl";
 const CBOR_SIGNATURE_TAG:      u64  = 55799;
 const CBOR_OPENSWAN_TAG:       u64  = 0x4f50534e;
 //const CborIPv4Tag:           u64  = 260;            /* squatted */
@@ -60,7 +60,7 @@ impl OpenswanWhackInterface {
         return cbor.serialize();
     }
 
-    pub fn openswan_status_encoded() -> Vec<u8> {
+    pub fn openswan_encode_status() -> Vec<u8> {
         let mut statusoption_map: BTreeMap<CborType, CborType> = BTreeMap::new();
         statusoption_map.insert(CborType::Integer(openswanwhack::statusoptions_keys::WHACK_STAT_OPTIONS as u64),
                                 CborType::Integer(1));
@@ -72,7 +72,22 @@ impl OpenswanWhackInterface {
         return CborType::Map(command_map).serialize();
     }
 
-    async fn openswan_send_cmd(cmdbytes) -> Result<String, std::io::Error> {
+    pub fn openswan_encode_linkandlisten() -> Vec<u8> {
+        let mut option_map: BTreeMap<CborType, CborType> = BTreeMap::new();
+        option_map.insert(CborType::Integer(openswanwhack::optionscommand_keys::WHACK_OPT_LISTEN_ON_LINK_SCOPE as u64),
+                                CborType::Integer(1));
+
+        let mut command_map: BTreeMap<CborType, CborType> = BTreeMap::new();
+        command_map.insert(CborType::Integer(openswanwhack::whack_message_keys::WHACK_OPTIONS as u64),
+                           CborType::Map(option_map));
+
+        command_map.insert(CborType::Integer(openswanwhack::whack_message_keys::WHACK_LISTEN as u64),
+                           CborType::Integer(1));
+
+        return CborType::Map(command_map).serialize();
+    }
+
+    async fn openswan_send_cmd(cmdbytes: Vec<u8>) -> Result<String, std::io::Error> {
         let mut osw = OpenswanWhackInterface::connect().await?;
 
         let bytes1 = OpenswanWhackInterface::openswan_tag();
@@ -84,6 +99,29 @@ impl OpenswanWhackInterface {
         osw.ctrl_sock.read_to_string(&mut results).await?;
         return Ok(results)
     }
+
+    pub async fn openswan_start() -> Result<ExitStatus, std::io::Error> {
+        Command::new("/usr/local/libexec/ipsec/pluto")
+            .arg("--ctlbase")
+            .arg("/run/pluto")
+            .arg("--stderrlog")
+            .arg("--use--netkey")
+            .arg("--nhelpers")
+            .arg("1")
+            .status()
+    }
+
+    pub async fn openswan_setup() -> Result<(), std::io::Error> {
+        // do two setup functions on Openswan pluto.
+
+        // 1. tell it to pay attention to link-local addresses.
+        // 2. tell it to scan the list of interfaces
+        OpenswanWhackInterface::openswan_send_cmd(
+            OpenswanWhackInterface::openswan_encode_linkandlisten()).await.unwrap();
+
+        Ok(())
+    }
+
 }
 
 #[cfg(test)]
@@ -109,7 +147,7 @@ mod tests {
 //    }
 //
     async fn openswan_status() -> Result<(), std::io::Error> {
-        let results = openswan_send_cmd(OpenswanWhackInterface::openswan_status());
+        let results = OpenswanWhackInterface::openswan_send_cmd(OpenswanWhackInterface::openswan_encode_status()).await.unwrap();
         println!("status\n{}", results);
 
         Ok(())
