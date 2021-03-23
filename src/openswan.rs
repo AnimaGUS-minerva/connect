@@ -126,6 +126,12 @@ impl OpenswanWhackInterface {
         Ok(())
     }
 
+    pub async fn openswan_status() -> Result<(), std::io::Error> {
+        let results = OpenswanWhackInterface::openswan_send_cmd(OpenswanWhackInterface::openswan_encode_status()).await.unwrap();
+        println!("status\n{}", results);
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -150,17 +156,11 @@ mod tests {
 //        blah = CborType::Map()
 //    }
 //
-    async fn openswan_status() -> Result<(), std::io::Error> {
-        let results = OpenswanWhackInterface::openswan_send_cmd(OpenswanWhackInterface::openswan_encode_status()).await.unwrap();
-        println!("status\n{}", results);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_getting_openswan_status() {
-        assert_eq!(aw!(openswan_status()).unwrap(), ());
-    }
+    // requires manual setup of pluto
+    //#[test]
+    //fn test_getting_openswan_status() {
+    //   assert_eq!(aw!(OpenswanWhackInterface::openswan_status()).unwrap(), ());
+    //}
 
 }
 
