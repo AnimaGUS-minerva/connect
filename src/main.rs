@@ -18,9 +18,7 @@
 extern crate sysctl;
 
 use nix::unistd::Pid;
-use futures::stream::TryStreamExt;
-use rtnetlink::{new_connection, Error, Handle, Error::NetlinkError};
-use netlink_packet_route::ErrorMessage;
+use rtnetlink::{new_connection};
 use std::io::ErrorKind;
 use tokio::time::{delay_for, Duration};
 //use std::os::unix::net::UnixStream;
@@ -42,94 +40,11 @@ pub mod adjacency;
 pub mod vtitun;
 pub mod openswan;
 pub mod openswanwhack;
+pub mod systemif;
 
-static VERSION: &str = "1.0.0";
+static VERSION: &str = "0.9.0";
 // static mut ARGC: isize = 0 as isize;
 // static mut ARGV: *mut *mut i8 = 0 as *mut *mut i8;
-
-async fn addremove_bridge(updown: bool,
-                          handle: &Handle, _dull: &dull::Dull,
-                          pname: &String, masterlink: u32) -> Result<(), Error> {
-
-    let mut pull0 = handle.link().get().set_name_filter(pname.to_string()).execute();
-    if let Some(link) = pull0.try_next().await? {
-        // put the interface up or down
-        if updown {
-            handle
-                .link()
-                .set(link.header.index)
-                .up()
-                .execute()
-                .await?;
-        } else {
-            handle
-                .link()
-                .set(link.header.index)
-                .down()
-                .execute()
-                .await?;
-        }
-
-        // add/remove it into the trusted bridge
-        handle
-            .link()
-            .set(link.header.index)
-            .master(masterlink)
-            .execute()
-            .await?;
-    }
-    Ok(())
-}
-
-async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, bridge: &String, name: &String) -> Result<(), Error> {
-
-    let mut trusted = handle.link().get().set_name_filter(bridge.to_string()).execute();
-    let trusted_link = match trusted.try_next().await? {
-        Some(link) => link,
-        None => { println!("did not find bridge {}", bridge); return Ok(()); }
-    };
-
-    let mut pname = name.clone();
-    pname.insert(0, 'p');
-
-    let result = handle
-        .link()
-        .add()
-        .veth(name.clone().into(), pname.clone().into())
-        .execute()
-        .await;
-    match result {
-        Err(NetlinkError(ErrorMessage { code: -17, .. })) => { println!("network pair already created"); },
-        Ok(_) => {},
-        _ => {
-            println!("new error: {:?}", result);
-            std::process::exit(0);
-        }
-    };
-
-    let mut dull0 = handle.link().get().set_name_filter(name.clone()).execute();
-    if let Some(link) = dull0.try_next().await? {
-        handle
-            .link()
-            .set(link.header.index)
-            .up()
-            .execute()
-            .await?;
-        handle
-            .link()
-            .set(link.header.index)
-            .setns_by_pid(dull.dullpid.as_raw() as u32)
-            .execute()
-            .await?;
-    } else {
-        println!("no child link {} found", name);
-        return Ok(());
-    }
-
-    addremove_bridge(true, handle, dull, &pname, trusted_link.header.index).await?;
-    return Ok(());
-}
-
 
 // rewrite with new Trait that takes Acp or Dull.
 async fn exit_child(stream: &mut tokio::net::UnixStream) {
@@ -227,14 +142,18 @@ async fn parents(rt: &tokio::runtime::Runtime,
     set_acp_ns(&mut dull, acp.acppid).await;
 
     println!("child ready, now starting netlink thread");
-    // calling new_connection() causes a crash on the block_on() below!
+
+    // start up thread to listen to netlink in parent space, looking for new interfaces
+    let mut parent = systemif::parent_processing();
+
+    // create a netlink connection for use with the hacky trusted/dull0 setup.
     let (connection, handle, _) = new_connection().unwrap();
     rt.spawn(connection);
 
     //println!("creating dull0");
     let ifname     = "dull0".to_string();
     let bridgename = "trusted".to_string();
-    let bridge = setup_dull_bridge(&handle, &dull, &bridgename, &ifname).await;
+    let bridge = systemif::setup_dull_bridge(&handle, &dull, &bridgename, &ifname).await;
     match bridge {
         Err(e) => { println!("Failing to create dull: {}", e); return Ok(()); },
         _ => {}
@@ -279,7 +198,7 @@ async fn parents(rt: &tokio::runtime::Runtime,
     println!("\nshutting down children");
 
     // remove from the bridge
-    addremove_bridge(false, &handle, &dull, &ifname, 0).await.unwrap();
+    systemif::addremove_bridge(false, &handle, &dull, &ifname, 0).await.unwrap();
 
     exit_child(&mut dull.child_stream).await;
     exit_child(&mut acp.child_stream).await;

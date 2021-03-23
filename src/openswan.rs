@@ -138,6 +138,7 @@ impl OpenswanWhackInterface {
 mod tests {
     use super::*;
 
+    #[allow(unused_macros)]
     macro_rules! aw {
         ($e:expr) => {
             tokio_test::block_on($e)
