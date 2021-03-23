@@ -47,10 +47,11 @@ static VERSION: &str = "1.0.0";
 // static mut ARGC: isize = 0 as isize;
 // static mut ARGV: *mut *mut i8 = 0 as *mut *mut i8;
 
-async fn addremove_dull_bridge(updown: bool,
-                               handle: &Handle, _dull: &dull::Dull,
-                               _name: &String, masterlink: u32) -> Result<(), Error> {
-    let mut pull0 = handle.link().get().set_name_filter("pull0".to_string()).execute();
+async fn addremove_bridge(updown: bool,
+                          handle: &Handle, _dull: &dull::Dull,
+                          pname: &String, masterlink: u32) -> Result<(), Error> {
+
+    let mut pull0 = handle.link().get().set_name_filter(pname.to_string()).execute();
     if let Some(link) = pull0.try_next().await? {
         // put the interface up or down
         if updown {
@@ -80,18 +81,21 @@ async fn addremove_dull_bridge(updown: bool,
     Ok(())
 }
 
-async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: &String) -> Result<(), Error> {
-    let mut trusted = handle.link().get().set_name_filter("ietf".to_string()).execute();
+async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, bridge: &String, name: &String) -> Result<(), Error> {
+
+    let mut trusted = handle.link().get().set_name_filter(bridge.to_string()).execute();
     let trusted_link = match trusted.try_next().await? {
         Some(link) => link,
-        None => { println!("did not find bridge \"ietf\""); return Ok(()); }
+        None => { println!("did not find bridge {}", bridge); return Ok(()); }
     };
-    // if no such bridge, then do a macvlan on eth0!
+
+    let mut pname = name.clone();
+    pname.insert(0, 'p');
 
     let result = handle
         .link()
         .add()
-        .veth("dull0".into(), "pull0".into())
+        .veth(name.clone().into(), pname.clone().into())
         .execute()
         .await;
     match result {
@@ -122,7 +126,7 @@ async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, name: &String) ->
         return Ok(());
     }
 
-    addremove_dull_bridge(true, handle, dull, name, trusted_link.header.index).await?;
+    addremove_bridge(true, handle, dull, &pname, trusted_link.header.index).await?;
     return Ok(());
 }
 
@@ -228,8 +232,9 @@ async fn parents(rt: &tokio::runtime::Runtime,
     rt.spawn(connection);
 
     //println!("creating dull0");
-    let bridgename = "dull0".to_string();
-    let bridge = setup_dull_bridge(&handle, &dull, &bridgename).await;
+    let ifname     = "dull0".to_string();
+    let bridgename = "trusted".to_string();
+    let bridge = setup_dull_bridge(&handle, &dull, &bridgename, &ifname).await;
     match bridge {
         Err(e) => { println!("Failing to create dull: {}", e); return Ok(()); },
         _ => {}
@@ -274,7 +279,7 @@ async fn parents(rt: &tokio::runtime::Runtime,
     println!("\nshutting down children");
 
     // remove from the bridge
-    addremove_dull_bridge(false, &handle, &dull, &bridgename, 0).await.unwrap();
+    addremove_bridge(false, &handle, &dull, &ifname, 0).await.unwrap();
 
     exit_child(&mut dull.child_stream).await;
     exit_child(&mut acp.child_stream).await;
