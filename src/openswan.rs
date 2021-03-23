@@ -101,6 +101,10 @@ impl OpenswanWhackInterface {
     }
 
     pub async fn openswan_start() -> Result<ExitStatus, std::io::Error> {
+
+        Command::new("modprobe")
+            .arg("af_key").status().unwrap();
+
         Command::new("/usr/local/libexec/ipsec/pluto")
             .arg("--ctlbase")
             .arg("/run/pluto")
