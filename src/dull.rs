@@ -28,6 +28,7 @@ use crate::dullgrasp;
 use crate::dullgrasp::GraspDaemon;
 use crate::adjacency::Adjacency;
 use crate::control::DebugOptions;
+use crate::openswan;
 
 use nix::unistd::*;
 use nix::sched::unshare;
@@ -437,6 +438,9 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
                             ifn.grasp_daemon = Some(gd.clone());
                         }
 
+                        // poke Openswan to rescan the list of interfaces
+                        openswan::OpenswanWhackInterface::openswan_setup().await.unwrap();
+
                         GraspDaemon::start_loop(gd, recv, send, child.clone()).await;
                     }
                 }
@@ -536,6 +540,9 @@ async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream) {
         let mut cil = childinfo.lock().await;
         cil.netlink_handle = Some(netlink_handle);
     }
+
+    // now, also start pluto in this namespace.
+    openswan::OpenswanWhackInterface::openswan_start().await.unwrap();
 
     /* let parent know that we ready */
     println!("tell parent, child is ready");
