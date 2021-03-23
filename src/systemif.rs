@@ -17,9 +17,28 @@
 
 extern crate sysctl;
 
-use futures::stream::TryStreamExt;
+use std::sync::Arc;
+use futures::stream::{StreamExt, TryStreamExt};
+//use std::process::{ExitStatus};
+use tokio::process::{Command};
 use netlink_packet_route::ErrorMessage;
-use rtnetlink::{Handle, Error,Error::NetlinkError};
+use rtnetlink::{
+    constants::{RTMGRP_LINK},
+    Error,  Error::NetlinkError,  Handle,
+    new_connection,
+    sys::SocketAddr,
+};
+use netlink_packet_route::{
+    NetlinkPayload::InnerMessage,
+    RtnlMessage::NewLink,
+//    RtnlMessage::NewAddress,
+//    RtnlMessage::NewRoute,
+//    RtnlMessage::DelRoute,
+//    RtnlMessage::DelAddress,
+    RtnlMessage::DelLink,
+    LinkMessage,
+//    AddressMessage
+};
 //use std::os::unix::net::UnixStream;
 //use sysctl::Sysctl;
 use crate::dull;
@@ -107,32 +126,35 @@ pub async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, bridge: &Stri
     return Ok(());
 }
 
-async fn gather_parent_link_info(handle: &Handle, lm: LinkMessage) -> Result<(), Error> {
+async fn gather_parent_link_info(_handle: &Handle, lm: LinkMessage) -> Result<(), Error> {
     let ifindex = lm.header.index;
     println!("ifindex: {:?} ", ifindex);
 
     //data.store_link_info(lm, ifindex).await;
 
-        // add/remove it into the trusted bridge
-        handle
-            .link()
-        .set(link.header.index)
+    let _ifindex = lm.header.index;
 
-    if data.debug.debug_namespaces {
-        Command::new("ip")
-            .arg("link")
-            .arg("ls")
-            .status()
-            .expect("ls command failed to start");
-    }
+    // add/remove it into the trusted bridge
+    //let dev = handle
+    //.link()
+    //.get(ifindex).await.unwrap();
+
+    Command::new("ip")
+        .arg("link")
+        .arg("ls")
+        .status()
+        .await
+        .expect("ls command failed to start");
 
     Ok(())
 }
 
-async fn parent_processing() -> Result<tokio::task::JoinHandle<Result<(),Error>>, String> {
+pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>) -> Result<tokio::task::JoinHandle<Result<(),Error>>, String> {
+
+    let rt1 = rt.clone();
 
     /* NETLINK listen_network activity daemon: process it all in the background */
-    let listenhandle = rt2.spawn(async move {
+    let listenhandle = rt.spawn(async move {
         // Open the netlink socket
         let (mut connection, handle, mut messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
 
@@ -144,7 +166,7 @@ async fn parent_processing() -> Result<tokio::task::JoinHandle<Result<(),Error>>
         let addr = SocketAddr::new(0, mgroup_flags);
         // Said address is bound so new conenctions and thus new message broadcasts can be received.
         connection.socket_mut().bind(&addr).expect("failed to bind");
-        rt.spawn(connection);
+        rt1.spawn(connection);
 
         while let Some((message, _)) = messages.next().await {
             let payload = message.payload;
@@ -156,7 +178,7 @@ async fn parent_processing() -> Result<tokio::task::JoinHandle<Result<(),Error>>
 
                 InnerMessage(NewLink(stuff)) => {
                     // this is a new device
-                    gather_parent_link_info(stuff).await.unwrap();
+                    gather_parent_link_info(&handle, stuff).await.unwrap();
                 }
                 _ => { println!("msg type: {:?}", payload); }
             }

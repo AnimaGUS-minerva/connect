@@ -24,14 +24,14 @@ extern crate moz_cbor as cbor;
 //use futures::stream::TryStreamExt;
 //use futures::lock::{Mutex};
 //use netlink_packet_sock_diag::constants::IPPROTO_UDP;
-//use tokio::process::Command;
 use std::collections::BTreeMap;
 //use tokio::time::{delay_for, Duration};
 use tokio::net::UnixStream;
 use cbor::CborType;
 use tokio::io::AsyncWriteExt;
 use tokio::io::AsyncReadExt;
-use std::process::{Command, ExitStatus};
+use std::process::{ExitStatus};
+use tokio::process::{Command};
 use crate::openswanwhack;
 
 //use crate::dull::DullInterface;
@@ -103,7 +103,7 @@ impl OpenswanWhackInterface {
     pub async fn openswan_start() -> Result<ExitStatus, std::io::Error> {
 
         Command::new("modprobe")
-            .arg("af_key").status().unwrap();
+            .arg("af_key").status().await.unwrap();
 
         Command::new("/usr/local/libexec/ipsec/pluto")
             .arg("--ctlbase")
@@ -113,6 +113,7 @@ impl OpenswanWhackInterface {
             .arg("--nhelpers")
             .arg("1")
             .status()
+            .await
     }
 
     pub async fn openswan_setup() -> Result<(), std::io::Error> {

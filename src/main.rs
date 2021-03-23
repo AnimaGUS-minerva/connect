@@ -17,6 +17,7 @@
 
 extern crate sysctl;
 
+use std::sync::Arc;
 use nix::unistd::Pid;
 use rtnetlink::{new_connection};
 use std::io::ErrorKind;
@@ -106,7 +107,7 @@ async fn set_acp_ns(dull: &mut dull::Dull, acpns: Pid) {
     }
 }
 
-async fn parents(rt: &tokio::runtime::Runtime,
+async fn parents(rt: Arc<tokio::runtime::Runtime>,
                  dullinit: dull::DullInit,
                  acpinit:  acp::AcpInit,
                  args: ConnectOptions) -> Result<(), String> {
@@ -144,7 +145,7 @@ async fn parents(rt: &tokio::runtime::Runtime,
     println!("child ready, now starting netlink thread");
 
     // start up thread to listen to netlink in parent space, looking for new interfaces
-    let mut parent = systemif::parent_processing();
+    let _parentloop = systemif::parent_processing(&rt);
 
     // create a netlink connection for use with the hacky trusted/dull0 setup.
     let (connection, handle, _) = new_connection().unwrap();
@@ -222,13 +223,14 @@ fn main () -> Result<(), String> {
     let dull = dull::namespace_daemon().unwrap();
 
     // tokio 0.2
-    let rt = tokio::runtime::Builder::new()
+    let brt = tokio::runtime::Builder::new()
         .threaded_scheduler()
         .enable_all()
         .build()
         .unwrap();
 
-    let future = parents(&rt, dull, acp, args);
+    let rt = Arc::new(brt);
+    let future = parents(rt.clone(), dull, acp, args);
     rt.handle().block_on(future).unwrap();
 
     return Ok(());
