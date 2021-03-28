@@ -38,6 +38,8 @@ use std::net::Ipv6Addr;
 use std::collections::HashMap;
 use std::process::Command;
 //use std::convert::TryInto;
+use tokio::signal;
+use tokio::time::{delay_for, Duration};
 
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
@@ -65,13 +67,13 @@ use netlink_packet_route::{
  *
  */
 
-/* This structure is present in the parent to represent the DULL, before tokio */
+/* This structure is present in the parent to represent the ACP, before tokio */
 pub struct AcpInit {
     pub child_io:      UnixStream,
     pub dullpid:       Pid
 }
 
-/* This structure is present in the parent to represent the DULL */
+/* This structure is present in the parent to represent the ACP */
 pub struct Acp {
     pub debug:         DebugOptions,
     pub child_stream:  tokio::net::UnixStream,
@@ -387,7 +389,7 @@ pub async fn process_control(child: Arc<Mutex<AcpChild>>, mut child_sock: tokio:
         if let Ok(thing) = control::read_control(&mut child_sock).await {
             match thing {
                 control::DullControl::Exit => {
-                    println!("DULL process exiting");
+                    println!("ACP process exiting");
                     {
                         let cl = child.lock().await;
                         let mut dl = cl.data.lock().await;
@@ -405,7 +407,7 @@ pub async fn process_control(child: Arc<Mutex<AcpChild>>, mut child_sock: tokio:
                     std::process::exit(0);
                 }
                 control::DullControl::AdminDown { interface_index: ifn } => {
-                    println!("DULL turning off interface {}", ifn);
+                    println!("ACP turning off interface {}", ifn);
                 }
                 control::DullControl::GraspDebug { grasp_debug: deb } => {
                     println!("Debug set to {}", deb);
@@ -451,8 +453,31 @@ pub fn create_netns() -> Result<(), String> {
     Ok(())
 }
 
+/* duplicate code with dull.rs,  some kind of Template needed */
+async fn ignore_sigint(childinfo: &Arc<Mutex<AcpChild>>) {
+
+    let child2 = childinfo.clone();
+    let rt = {
+        let locked = childinfo.lock().await;
+        locked.runtime.clone()
+    };
+    rt.spawn(async move {   // child2 moved
+        loop {
+            signal::ctrl_c().await.unwrap();
+            {
+                let cl = child2.lock().await;
+                let mut dl = cl.data.lock().await;
+                dl.exit_now = true;
+            }
+            delay_for(Duration::from_millis(500)).await;
+        }
+    });
+}
+
 async fn child_processing(childinfo: Arc<Mutex<AcpChild>>, sock: UnixStream) {
     let mut parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
+
+    ignore_sigint(&childinfo).await;
 
     /* arrange to listen on network events in the new network namespace */
     let netlink_handle = listen_network(&childinfo).await.unwrap();

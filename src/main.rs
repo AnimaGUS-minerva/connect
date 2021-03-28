@@ -53,8 +53,8 @@ async fn exit_child(stream: &mut tokio::net::UnixStream) {
 
     match result  {
         Err(e) => match e.kind() {
-            ErrorKind::BrokenPipe  => { return (); },
-            _                      => { return (); }  // maybe error.
+            ErrorKind::BrokenPipe  => { println!("child already exited");  return (); },
+            _                      => { println!("another error {:?}", e); return (); }  // maybe error.
         }
         _ => { return (); }
     }
@@ -164,6 +164,8 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
     let (mut sender, mut receiver) = mpsc::channel(2);
 
     let mut ctrlsend = sender.clone();
+
+    /* listen for ctrl_c signal, and send a signal when received */
     rt.spawn(async move {
         loop {
             signal::ctrl_c().await.unwrap();
@@ -172,7 +174,7 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
         }
     });
 
-    /* send a signal every 500ms */
+    /* send a signal every 500ms for various events */
     rt.spawn(async move {
         loop {
             //println!("spin");
@@ -183,7 +185,7 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
 
     /* wait for signal to end */
     while let Some(value) = receiver.recv().await {
-        //println!("spun {}", cycles_to_end);
+        //println!("spun {}", alivecycles);
         match value {
             0 => {
                 alivecycles -= 1;
