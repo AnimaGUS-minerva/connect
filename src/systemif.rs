@@ -23,7 +23,7 @@ use futures::stream::{StreamExt, TryStreamExt};
 use tokio::process::{Command};
 use netlink_packet_route::ErrorMessage;
 use rtnetlink::{
-    constants::{RTMGRP_LINK},
+    constants::{RTMGRP_IPV6_ROUTE, RTMGRP_IPV6_IFADDR, RTMGRP_LINK},
     Error,  Error::NetlinkError,  Handle,
     new_connection,
     sys::SocketAddr,
@@ -35,7 +35,7 @@ use netlink_packet_route::{
 //    RtnlMessage::NewRoute,
 //    RtnlMessage::DelRoute,
 //    RtnlMessage::DelAddress,
-    RtnlMessage::DelLink,
+//    RtnlMessage::DelLink,
     LinkMessage,
 //    AddressMessage
 };
@@ -126,7 +126,7 @@ pub async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, bridge: &Stri
     return Ok(());
 }
 
-async fn gather_parent_link_info(_handle: &Handle, lm: LinkMessage) -> Result<(), Error> {
+async fn gather_parent_link_info(_handle: &Handle, lm: &LinkMessage) -> Result<(), Error> {
     let ifindex = lm.header.index;
     println!("ifindex: {:?} ", ifindex);
 
@@ -149,18 +149,36 @@ async fn gather_parent_link_info(_handle: &Handle, lm: LinkMessage) -> Result<()
     Ok(())
 }
 
+pub async fn scan_interfaces(handle: &Handle) {
+    let mut list = handle.link().get().execute();
+
+    let mut cnt: u32 = 0;
+
+    while let Some(link) = list.try_next().await.unwrap() {
+        println!("message {}", cnt);
+        gather_parent_link_info(&handle, &link).await.unwrap();
+        cnt += 1;
+    }
+}
+
+
 pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>) -> Result<tokio::task::JoinHandle<Result<(),Error>>, String> {
 
     let rt1 = rt.clone();
 
     /* NETLINK listen_network activity daemon: process it all in the background */
     let listenhandle = rt.spawn(async move {
+
+        println!("opening netlink socket for monitor");
+
         // Open the netlink socket
         let (mut connection, handle, mut messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
 
         // These flags specify what kinds of broadcast messages we want to listen for.
         // we just care about LINK changes
-        let mgroup_flags = RTMGRP_LINK;
+        let mgroup_flags = RTMGRP_IPV6_ROUTE | RTMGRP_IPV6_IFADDR | RTMGRP_LINK;
+
+        println!("starting parent processing loop");
 
         // A netlink socket address is created with said flags.
         let addr = SocketAddr::new(0, mgroup_flags);
@@ -168,17 +186,15 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>) -> Result<toki
         connection.socket_mut().bind(&addr).expect("failed to bind");
         rt1.spawn(connection);
 
-        while let Some((message, _)) = messages.next().await {
-            let payload = message.payload;
-            match payload {
-                InnerMessage(DelLink(_stuff)) => {
-                    /* happens when we move an ethernet pair or macvlan to another namespace */
-                    /* need to sort out when it is relevant by looking at name and LinkHeader */
-                }
+        /* first scan and process existing interfaces */
+        scan_interfaces(&handle).await;
 
+        /* then process anything new that arrives */
+        while let Some((message, _)) = messages.next().await {
+            let payload = &message.payload;
+            match payload {
                 InnerMessage(NewLink(stuff)) => {
-                    // this is a new device
-                    gather_parent_link_info(&handle, stuff).await.unwrap();
+                    gather_parent_link_info(&handle, &stuff).await.unwrap();
                 }
                 _ => { println!("msg type: {:?}", payload); }
             }
