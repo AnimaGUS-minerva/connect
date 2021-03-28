@@ -25,7 +25,7 @@ extern crate moz_cbor as cbor;
 //use futures::lock::{Mutex};
 //use netlink_packet_sock_diag::constants::IPPROTO_UDP;
 use std::collections::BTreeMap;
-//use tokio::time::{delay_for, Duration};
+use tokio::time::{delay_for, Duration};
 use tokio::net::UnixStream;
 use cbor::CborType;
 use tokio::io::AsyncWriteExt;
@@ -41,7 +41,7 @@ pub struct OpenswanWhackInterface {
     pub ctrl_sock: UnixStream,
 }
 
-const OPENSWAN_CONTROL_PATH:   &str = "/run/pluto/pluto.ctl";
+const OPENSWAN_CONTROL_PATH:   &str = "/run/acp.ctl";
 const CBOR_SIGNATURE_TAG:      u64  = 55799;
 const CBOR_OPENSWAN_TAG:       u64  = 0x4f50534e;
 //const CborIPv4Tag:           u64  = 260;            /* squatted */
@@ -100,20 +100,36 @@ impl OpenswanWhackInterface {
         return Ok(results)
     }
 
+    pub async fn openswan_stop() -> Result<(), std::io::Error> {
+        let mut command_map: BTreeMap<CborType, CborType> = BTreeMap::new();
+        command_map.insert(CborType::Integer(openswanwhack::whack_message_keys::WHACK_SHUTDOWN as u64),
+                           CborType::Integer(1));
+
+        OpenswanWhackInterface::openswan_send_cmd(CborType::Map(command_map).serialize()).await.unwrap();
+
+        return Ok(());
+    }
+
     pub async fn openswan_start() -> Result<ExitStatus, std::io::Error> {
 
         Command::new("modprobe")
             .arg("af_key").status().await.unwrap();
 
-        Command::new("/usr/local/libexec/ipsec/pluto")
+        let result = Command::new("/usr/local/libexec/ipsec/pluto")
             .arg("--ctlbase")
-            .arg("/run/pluto")
+            .arg("/run/acp")    // .ctl is implied
             .arg("--stderrlog")
             .arg("--use-netkey")
             .arg("--nhelpers")
             .arg("1")
             .status()
-            .await
+            .await;
+
+        // short delay to let Openswan start up.
+        delay_for(Duration::from_millis(100)).await;
+        // could check with ::connect to see if control socket is present yet.
+
+        return result;
     }
 
     pub async fn openswan_setup() -> Result<(), std::io::Error> {

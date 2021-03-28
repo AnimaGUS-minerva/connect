@@ -460,10 +460,14 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
 
 pub async fn process_control(child: Arc<Mutex<DullChild>>, mut child_sock: tokio::net::UnixStream) {
     loop {
+        println!("DULL process reading control...");
         if let Ok(thing) = control::read_control(&mut child_sock).await {
             match thing {
                 control::DullControl::Exit => {
-                    println!("DULL process exiting");
+                    println!("DULL process shutting down pluto");
+                    openswan::OpenswanWhackInterface::openswan_stop().await.expect("openswan was not stopped");
+                    delay_for(Duration::from_millis(100)).await;
+                    println!("DULL process now dying");
                     {
                         let cl = child.lock().await;
                         let mut dl = cl.data.lock().await;
@@ -477,6 +481,7 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>, mut child_sock: tokio
                         };
                          */
                     }
+                    delay_for(Duration::from_millis(500)).await;
                     /* kill self and all threads */
                     std::process::exit(0);
                 }

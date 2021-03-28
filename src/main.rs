@@ -147,6 +147,8 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
     // start up thread to listen to netlink in parent space, looking for new interfaces
     let _parentloop = systemif::parent_processing(&rt);
 
+    println!("parent processing loop started");
+
     // create a netlink connection for use with the hacky trusted/dull0 setup.
     let (connection, handle, _) = new_connection().unwrap();
     rt.spawn(connection);
@@ -201,11 +203,13 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
     println!("\nshutting down children");
 
     // remove from the bridge
-    systemif::addremove_bridge(false, &handle, &dull, &ifname, 0).await.unwrap();
+    //systemif::addremove_bridge(false, &handle, &dull, &ifname, 0).await.unwrap();
 
     exit_child(&mut dull.child_stream).await;
     exit_child(&mut acp.child_stream).await;
-    delay_for(Duration::from_millis(100)).await;
+
+    println!("\nwaiting for children to shutdown");
+    delay_for(Duration::from_millis(1000)).await;
     kill(dull.dullpid, Signal::SIGINT).unwrap();
     kill(acp.acppid, Signal::SIGINT).unwrap();
 
