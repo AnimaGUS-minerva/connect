@@ -52,7 +52,8 @@ struct SystemInterface {
     pub ifname:        String,
     pub ignored:       bool,
     pub up:            bool,
-    pub bridge:        bool,
+    pub bridge_master: bool,
+    pub bridge_slave:  bool,
     pub ifchild:       Option<IfIndex>,   /* if we created an item to go with this one */
     pub ifmaster:      Option<IfIndex>,   /* if this is part of a bridge, then who it belongs to */
     pub mtu:           u32,
@@ -71,7 +72,8 @@ impl SystemInterface {
             mtu:     0,
             up:      false,
             ignored: false,
-            bridge:  false,
+            bridge_master:  false,
+            bridge_slave:   false,
             ifchild:  None,
             ifmaster: None,
         }
@@ -195,13 +197,6 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
         return Ok(());
     }
 
-    if ifn.bridge {
-        if let Some(childif) = ifn.ifchild {
-            println!("  bridge parent interface {} has child pair {}", ifn.ifname, childif);
-            return Ok(());
-        }
-    }
-
     for nlas in &lm.nlas {
         use netlink_packet_route::link::nlas::Nla;
         match nlas {
@@ -213,19 +208,64 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                 ifn.ifname = name.to_string();
             },
             Nla::Mtu(bytes) => {
-                println!("mtu: {}", *bytes);
+                println!("  mtu: {}", *bytes);
                 ifn.mtu = *bytes;
             },
             Nla::OperState(state) => {
                 match state {
                     State::Up => {
-                        println!("device is up");
+                        println!("  device is up");
                         ifn.up = true;
                     },
-                    _ => { println!("device in state {:?}", state); }
+                    _ => { println!("  device in state {:?}", state); }
                 }
             }
+            Nla::Info(listofstuff) => {
+                use netlink_packet_route::link::nlas::Info;
+                //use netlink_packet_route::link::nlas::InfoData;
+                use netlink_packet_route::link::nlas::InfoKind;
+                for stuff in listofstuff {
+                    match stuff {
+                        Info::Kind(kind) => {
+                            println!("  is it a bridge: {:?}", kind);
+                            match kind {
+                                InfoKind::Bridge => {
+                                    ifn.bridge_master = true;
+                                }
+                                _ => { println!("2 other kind {:?}", kind); }
+                            }
+                        }
+                        Info::Data(_data) => { /* ignore bridge data */ }
+                        Info::SlaveData(_data) => { /* ignore bridge data */ }
+                        Info::SlaveKind(_data) => {
+                            /* what exactly to do with this data? */
+                            ifn.bridge_slave = true;
+                        }
+                        _ => { println!("other info: {:?}", stuff); }
+                    }
+                }
+            }
+            Nla::Master(ifmaster)     => {
+                /* could be a bridge, or could be a MACvlan */
+                ifn.ifmaster = Some(*ifmaster);
+                println!("   master interface is {}", ifmaster);
+            }
+            Nla::Address(_listofaddr) => { /* something with addresses */ }
+            Nla::Carrier(_updown) => { /* something with the carrier */ }
+            Nla::Qdisc(_) | Nla::Map(_) | Nla::Mode(_) | Nla::Broadcast(_) |
+            Nla::CarrierChanges(_) | Nla::CarrierUpCount(_) | Nla::CarrierDownCount(_) |
+            Nla::Other(_) | Nla::Group(_) | Nla::Promiscuity(_) |
+            Nla::ProtoDown(_) | Nla::TxQueueLen(_) | Nla::NumTxQueues(_) | Nla::NumRxQueues(_) |
+            Nla::GsoMaxSegs(_) | Nla::GsoMaxSize(_) | Nla::AfSpecInet(_) |
+            Nla::Stats64(_) | Nla::Stats(_) | Nla::Xdp(_) => { /* nothing */ }
             _ => { println!("nlas info: {:?}", nlas); }
+        }
+    }
+
+    if ifn.bridge_master {
+        if let Some(childif) = ifn.ifchild {
+            println!("  bridge parent interface {} has child pair {}", ifn.ifname, childif);
+            return Ok(());
         }
     }
 
