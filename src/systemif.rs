@@ -65,7 +65,8 @@ struct SystemInterface {
 
 /* so far only info we care about */
 struct SystemInterfaces {
-    pub system_interfaces:  HashMap<u32, Arc<Mutex<SystemInterface>>>
+    pub system_interfaces:  HashMap<u32, Arc<Mutex<SystemInterface>>>,
+    pub ifcount: u32,
 }
 
 impl SystemInterface {
@@ -90,14 +91,17 @@ impl SystemInterface {
 impl SystemInterfaces {
     pub fn empty() -> SystemInterfaces {
         SystemInterfaces {
-            system_interfaces:  HashMap::new()
+            system_interfaces:  HashMap::new(), ifcount: 0
         }
     }
 
     pub async fn get_entry_by_ifindex<'a>(&'a mut self, ifindex: IfIndex) -> &'a Arc<Mutex<SystemInterface>> {
+        let mut inc = 0;
         let ifnl = self.system_interfaces.entry(ifindex).or_insert_with(|| {
+            inc += 1;
             Arc::new(Mutex::new(SystemInterface::empty(ifindex)))
         });
+        self.ifcount += inc;
         return ifnl;
     }
 }
@@ -384,6 +388,7 @@ mod tests {
         let mut si = SystemInterfaces::empty();
 
         gather_parent_link_info(&mut si, &eth0, true).await.unwrap();
+        assert_eq!(si.ifcount, 1);
 
         Ok(())
     }
