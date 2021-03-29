@@ -23,6 +23,7 @@ use futures::stream::{StreamExt, TryStreamExt};
 use futures::lock::Mutex;
 //use tokio::process::{Command};
 use netlink_packet_route::ErrorMessage;
+use netlink_packet_route::constants::*;
 use netlink_packet_route::link::nlas::State;
 use rtnetlink::{
     constants::{RTMGRP_IPV6_ROUTE, RTMGRP_IPV6_IFADDR, RTMGRP_LINK},
@@ -59,6 +60,7 @@ struct SystemInterface {
     pub ifmaster:      Option<IfIndex>,   /* if this is part of a bridge, then who it belongs to */
     pub mtu:           u32,
     pub deleted:       bool,
+    pub has_dull_if:   bool,
 }
 
 /* so far only info we care about */
@@ -80,6 +82,7 @@ impl SystemInterface {
             ifmaster: None,
             deleted:  false,
             macvlan:  false,
+            has_dull_if: false,
         }
     }
 }
@@ -184,7 +187,7 @@ pub async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, bridge: &Stri
 }
 
 async fn gather_parent_link_info(si: &mut SystemInterfaces,
-                                 _handle: &Handle, lm: &LinkMessage,
+                                 lm: &LinkMessage,
                                  newlink: bool) -> Result<(), Error> {
     let ifindex = lm.header.index;
     println!("processing ifindex: {:?} added={}", ifindex, newlink);
@@ -295,7 +298,7 @@ async fn scan_interfaces(si: &mut SystemInterfaces, handle: &Handle) {
 
     while let Some(link) = list.try_next().await.unwrap() {
         println!("message {}", cnt);
-        gather_parent_link_info(si, &handle, &link, true).await.unwrap();
+        gather_parent_link_info(si, &link, true).await.unwrap();
         cnt += 1;
     }
 }
@@ -335,11 +338,11 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>) -> Result<toki
             let payload = &message.payload;
             match payload {
                 InnerMessage(NewLink(lm)) => {
-                    gather_parent_link_info(&mut si, &handle, &lm, true).await.unwrap();
+                    gather_parent_link_info(&mut si, &lm, true).await.unwrap();
                 }
                 InnerMessage(NewAddress(_stuff)) => { /* nothing */ }
                 InnerMessage(DelLink(lm)) => {
-                    gather_parent_link_info(&mut si, &handle, &lm, false).await.unwrap();
+                    gather_parent_link_info(&mut si, &lm, false).await.unwrap();
                 }
                 InnerMessage(DelAddress(_stuff)) => { /* nothing */ }
                 InnerMessage(NewRoute(_stuff)) => { /* nothing */ }
@@ -353,4 +356,48 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>) -> Result<toki
     Ok(listenhandle)
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use netlink_packet_route::LinkHeader;
+    use netlink_packet_route::link::nlas::Nla;
+
+    fn make_eth0() -> netlink_packet_route::LinkMessage {
+        LinkMessage {
+            header: LinkHeader {
+                interface_family: 0,
+                index: 0,
+                link_layer_type: ARPHRD_NETROM,
+                flags: 0,
+                change_mask: 0,
+            },
+            nlas: vec![
+                Nla::IfName("eth0".to_string()),
+                Nla::TxQueueLen(0),
+            ],
+        }
+    }
+
+    async fn a_basic_eth0() -> Result<(), std::io::Error> {
+        let eth0 = make_eth0();
+        let mut si = SystemInterfaces::empty();
+
+        gather_parent_link_info(&mut si, &eth0, true).await.unwrap();
+
+        Ok(())
+    }
+
+    #[allow(unused_macros)]
+    macro_rules! aw {
+        ($e:expr) => {
+            tokio_test::block_on($e)
+        };
+    }
+
+    #[test]
+    fn basic_eth0() {
+        assert_eq!(aw!(a_basic_eth0()).unwrap(), ());
+    }
+}
 
