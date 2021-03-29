@@ -18,10 +18,12 @@
 extern crate sysctl;
 
 use std::sync::Arc;
+use std::collections::HashMap;
 use futures::stream::{StreamExt, TryStreamExt};
-//use std::process::{ExitStatus};
-use tokio::process::{Command};
+use futures::lock::Mutex;
+//use tokio::process::{Command};
 use netlink_packet_route::ErrorMessage;
+use netlink_packet_route::link::nlas::State;
 use rtnetlink::{
     constants::{RTMGRP_IPV6_ROUTE, RTMGRP_IPV6_IFADDR, RTMGRP_LINK},
     Error,  Error::NetlinkError,  Handle,
@@ -31,7 +33,7 @@ use rtnetlink::{
 use netlink_packet_route::{
     NetlinkPayload::InnerMessage,
     RtnlMessage::NewLink,
-//    RtnlMessage::NewAddress,
+    RtnlMessage::NewAddress,
 //    RtnlMessage::NewRoute,
 //    RtnlMessage::DelRoute,
 //    RtnlMessage::DelAddress,
@@ -42,6 +44,55 @@ use netlink_packet_route::{
 //use std::os::unix::net::UnixStream;
 //use sysctl::Sysctl;
 use crate::dull;
+use crate::dull::IfIndex;
+
+#[derive(Debug)]
+struct SystemInterface {
+    pub ifindex:       IfIndex,
+    pub ifname:        String,
+    pub ignored:       bool,
+    pub up:            bool,
+    pub bridge:        bool,
+    pub ifchild:       Option<IfIndex>,   /* if we created an item to go with this one */
+    pub ifmaster:      Option<IfIndex>,   /* if this is part of a bridge, then who it belongs to */
+    pub mtu:           u32,
+}
+
+/* so far only info we care about */
+struct SystemInterfaces {
+    pub system_interfaces:  HashMap<u32, Arc<Mutex<SystemInterface>>>
+}
+
+impl SystemInterface {
+    pub fn empty(ifi: IfIndex) -> SystemInterface {
+        SystemInterface {
+            ifindex: ifi,
+            ifname:  "".to_string(),
+            mtu:     0,
+            up:      false,
+            ignored: false,
+            bridge:  false,
+            ifchild:  None,
+            ifmaster: None,
+        }
+    }
+}
+
+impl SystemInterfaces {
+    pub fn empty() -> SystemInterfaces {
+        SystemInterfaces {
+            system_interfaces:  HashMap::new()
+        }
+    }
+
+    pub async fn get_entry_by_ifindex<'a>(&'a mut self, ifindex: IfIndex) -> &'a Arc<Mutex<SystemInterface>> {
+        let ifnl = self.system_interfaces.entry(ifindex).or_insert_with(|| {
+            Arc::new(Mutex::new(SystemInterface::empty(ifindex)))
+        });
+        return ifnl;
+    }
+}
+
 
 pub async fn addremove_bridge(updown: bool,
                           handle: &Handle, _dull: &dull::Dull,
@@ -126,37 +177,81 @@ pub async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, bridge: &Stri
     return Ok(());
 }
 
-async fn gather_parent_link_info(_handle: &Handle, lm: &LinkMessage) -> Result<(), Error> {
+async fn gather_parent_link_info(si: &mut SystemInterfaces,
+                                 _handle: &Handle, lm: &LinkMessage) -> Result<(), Error> {
     let ifindex = lm.header.index;
-    println!("ifindex: {:?} ", ifindex);
+    println!("processing ifindex: {:?}", ifindex);
 
-    //data.store_link_info(lm, ifindex).await;
+    let ifindex = lm.header.index;
 
-    let _ifindex = lm.header.index;
+    /* look up reference this ifindex, or create it */
+    let ifna = SystemInterfaces::get_entry_by_ifindex(si, ifindex).await;
+
+    let mut ifn  = ifna.lock().await;
+
+    /* see if we previously ignored it! */
+    if ifn.ignored {
+        println!("  ignored interface {}",ifn.ifname);
+        return Ok(());
+    }
+
+    if ifn.bridge {
+        if let Some(childif) = ifn.ifchild {
+            println!("  bridge parent interface {} has child pair {}", ifn.ifname, childif);
+            return Ok(());
+        }
+    }
+
+    for nlas in &lm.nlas {
+        use netlink_packet_route::link::nlas::Nla;
+        match nlas {
+            Nla::IfName(name) => {
+                println!("  ifname: {}", name);
+                if name == "lo" {
+                    ifn.ignored = true;
+                }
+                ifn.ifname = name.to_string();
+            },
+            Nla::Mtu(bytes) => {
+                println!("mtu: {}", *bytes);
+                ifn.mtu = *bytes;
+            },
+            Nla::OperState(state) => {
+                match state {
+                    State::Up => {
+                        println!("device is up");
+                        ifn.up = true;
+                    },
+                    _ => { println!("device in state {:?}", state); }
+                }
+            }
+            _ => { println!("nlas info: {:?}", nlas); }
+        }
+    }
 
     // add/remove it into the trusted bridge
     //let dev = handle
     //.link()
     //.get(ifindex).await.unwrap();
 
-    Command::new("ip")
-        .arg("link")
-        .arg("ls")
-        .status()
-        .await
-        .expect("ls command failed to start");
+//Command::new("ip")
+//        .arg("link")
+//        .arg("ls")
+//        .status()
+//        .await
+//        .expect("ls command failed to start");
 
     Ok(())
 }
 
-pub async fn scan_interfaces(handle: &Handle) {
+async fn scan_interfaces(si: &mut SystemInterfaces, handle: &Handle) {
     let mut list = handle.link().get().execute();
 
     let mut cnt: u32 = 0;
 
     while let Some(link) = list.try_next().await.unwrap() {
         println!("message {}", cnt);
-        gather_parent_link_info(&handle, &link).await.unwrap();
+        gather_parent_link_info(si, &handle, &link).await.unwrap();
         cnt += 1;
     }
 }
@@ -168,6 +263,8 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>) -> Result<toki
 
     /* NETLINK listen_network activity daemon: process it all in the background */
     let listenhandle = rt.spawn(async move {
+
+        let mut si = SystemInterfaces::empty();
 
         println!("opening netlink socket for monitor");
 
@@ -187,15 +284,16 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>) -> Result<toki
         rt1.spawn(connection);
 
         /* first scan and process existing interfaces */
-        scan_interfaces(&handle).await;
+        scan_interfaces(&mut si, &handle).await;
 
         /* then process anything new that arrives */
         while let Some((message, _)) = messages.next().await {
             let payload = &message.payload;
             match payload {
                 InnerMessage(NewLink(stuff)) => {
-                    gather_parent_link_info(&handle, &stuff).await.unwrap();
+                    gather_parent_link_info(&mut si, &handle, &stuff).await.unwrap();
                 }
+                InnerMessage(NewAddress(_stuff)) => { /* nothing */ }
                 _ => { println!("msg type: {:?}", payload); }
             }
         };
