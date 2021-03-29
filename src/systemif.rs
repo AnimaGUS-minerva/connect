@@ -34,10 +34,10 @@ use netlink_packet_route::{
     NetlinkPayload::InnerMessage,
     RtnlMessage::NewLink,
     RtnlMessage::NewAddress,
-//    RtnlMessage::NewRoute,
-//    RtnlMessage::DelRoute,
-//    RtnlMessage::DelAddress,
-//    RtnlMessage::DelLink,
+    RtnlMessage::NewRoute,
+    RtnlMessage::DelRoute,
+    RtnlMessage::DelAddress,
+    RtnlMessage::DelLink,
     LinkMessage,
 //    AddressMessage
 };
@@ -52,11 +52,13 @@ struct SystemInterface {
     pub ifname:        String,
     pub ignored:       bool,
     pub up:            bool,
+    pub macvlan:       bool,
     pub bridge_master: bool,
     pub bridge_slave:  bool,
     pub ifchild:       Option<IfIndex>,   /* if we created an item to go with this one */
     pub ifmaster:      Option<IfIndex>,   /* if this is part of a bridge, then who it belongs to */
     pub mtu:           u32,
+    pub deleted:       bool,
 }
 
 /* so far only info we care about */
@@ -76,6 +78,8 @@ impl SystemInterface {
             bridge_slave:   false,
             ifchild:  None,
             ifmaster: None,
+            deleted:  false,
+            macvlan:  false,
         }
     }
 }
@@ -180,11 +184,10 @@ pub async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, bridge: &Stri
 }
 
 async fn gather_parent_link_info(si: &mut SystemInterfaces,
-                                 _handle: &Handle, lm: &LinkMessage) -> Result<(), Error> {
+                                 _handle: &Handle, lm: &LinkMessage,
+                                 newlink: bool) -> Result<(), Error> {
     let ifindex = lm.header.index;
-    println!("processing ifindex: {:?}", ifindex);
-
-    let ifindex = lm.header.index;
+    println!("processing ifindex: {:?} added={}", ifindex, newlink);
 
     /* look up reference this ifindex, or create it */
     let ifna = SystemInterfaces::get_entry_by_ifindex(si, ifindex).await;
@@ -192,7 +195,7 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
     let mut ifn  = ifna.lock().await;
 
     /* see if we previously ignored it! */
-    if ifn.ignored {
+    if ifn.ignored && newlink {
         println!("  ignored interface {}",ifn.ifname);
         return Ok(());
     }
@@ -232,6 +235,9 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                                 InfoKind::Bridge => {
                                     ifn.bridge_master = true;
                                 }
+                                InfoKind::MacVlan => {
+                                    ifn.macvlan = true;
+                                }
                                 _ => { println!("2 other kind {:?}", kind); }
                             }
                         }
@@ -245,10 +251,15 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                     }
                 }
             }
-            Nla::Master(ifmaster)     => {
-                /* could be a bridge, or could be a MACvlan */
-                ifn.ifmaster = Some(*ifmaster);
-                println!("   master interface is {}", ifmaster);
+            Nla::Link(ifmaster) | Nla::Master(ifmaster)     => {
+                if newlink {
+                    /* could be a bridge, or could be a MACvlan */
+                    ifn.ifmaster = Some(*ifmaster);
+                    println!("   master interface is {}", *ifmaster);
+                } else {
+                    println!("   removed interface {} from {}", ifindex, *ifmaster);
+                    ifn.ifmaster = None;
+                }
             }
             Nla::Address(_listofaddr) => { /* something with addresses */ }
             Nla::Carrier(_updown) => { /* something with the carrier */ }
@@ -256,9 +267,10 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
             Nla::CarrierChanges(_) | Nla::CarrierUpCount(_) | Nla::CarrierDownCount(_) |
             Nla::Other(_) | Nla::Group(_) | Nla::Promiscuity(_) |
             Nla::ProtoDown(_) | Nla::TxQueueLen(_) | Nla::NumTxQueues(_) | Nla::NumRxQueues(_) |
-            Nla::GsoMaxSegs(_) | Nla::GsoMaxSize(_) | Nla::AfSpecInet(_) |
+            Nla::GsoMaxSegs(_) | Nla::GsoMaxSize(_) | Nla::AfSpecInet(_) | Nla::AfSpecBridge(_) |
+            Nla::ProtoInfo(_) | Nla::Event(_) |
             Nla::Stats64(_) | Nla::Stats(_) | Nla::Xdp(_) => { /* nothing */ }
-            _ => { println!("nlas info: {:?}", nlas); }
+            _ => { println!("index: {} system if nlas info: {:?}", ifindex, nlas); }
         }
     }
 
@@ -269,17 +281,9 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
         }
     }
 
-    // add/remove it into the trusted bridge
-    //let dev = handle
-    //.link()
-    //.get(ifindex).await.unwrap();
-
-//Command::new("ip")
-//        .arg("link")
-//        .arg("ls")
-//        .status()
-//        .await
-//        .expect("ls command failed to start");
+    if !newlink  {
+        ifn.deleted = true;
+    }
 
     Ok(())
 }
@@ -291,7 +295,7 @@ async fn scan_interfaces(si: &mut SystemInterfaces, handle: &Handle) {
 
     while let Some(link) = list.try_next().await.unwrap() {
         println!("message {}", cnt);
-        gather_parent_link_info(si, &handle, &link).await.unwrap();
+        gather_parent_link_info(si, &handle, &link, true).await.unwrap();
         cnt += 1;
     }
 }
@@ -330,10 +334,16 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>) -> Result<toki
         while let Some((message, _)) = messages.next().await {
             let payload = &message.payload;
             match payload {
-                InnerMessage(NewLink(stuff)) => {
-                    gather_parent_link_info(&mut si, &handle, &stuff).await.unwrap();
+                InnerMessage(NewLink(lm)) => {
+                    gather_parent_link_info(&mut si, &handle, &lm, true).await.unwrap();
                 }
                 InnerMessage(NewAddress(_stuff)) => { /* nothing */ }
+                InnerMessage(DelLink(lm)) => {
+                    gather_parent_link_info(&mut si, &handle, &lm, false).await.unwrap();
+                }
+                InnerMessage(DelAddress(_stuff)) => { /* nothing */ }
+                InnerMessage(NewRoute(_stuff)) => { /* nothing */ }
+                InnerMessage(DelRoute(_stuff)) => { /* nothing */ }
                 _ => { println!("msg type: {:?}", payload); }
             }
         };
