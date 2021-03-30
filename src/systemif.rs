@@ -40,12 +40,45 @@ use netlink_packet_route::{
     RtnlMessage::DelAddress,
     RtnlMessage::DelLink,
     LinkMessage,
+    RtnlMessage,
+    NetlinkMessage
 //    AddressMessage
 };
 //use std::os::unix::net::UnixStream;
 //use sysctl::Sysctl;
 use crate::dull;
 use crate::dull::IfIndex;
+
+trait NetlinkManager {
+
+}
+
+struct NetlinkInterface {
+    pub handle:     Handle,
+    //messages:   &'a u32,
+    pub messages:   futures::channel::mpsc::UnboundedReceiver<(NetlinkMessage<RtnlMessage>, SocketAddr)>,
+}
+
+impl NetlinkInterface {
+    pub fn new(rt: &Arc<tokio::runtime::Runtime>) -> NetlinkInterface {
+        // Open the netlink socket
+        let (mut connection, handle, messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
+
+        // These flags specify what kinds of broadcast messages we want to listen for.
+        // we just care about LINK changes
+        let mgroup_flags = RTMGRP_IPV6_ROUTE | RTMGRP_IPV6_IFADDR | RTMGRP_LINK;
+
+        // A netlink socket address is created with said flags.
+        let addr = SocketAddr::new(0, mgroup_flags);
+        // Said address is bound so new conenctions and thus new message broadcasts can be received.
+        connection.socket_mut().bind(&addr).expect("failed to bind");
+
+        rt.spawn(connection);
+
+        NetlinkInterface { handle: handle, messages: messages }
+    }
+}
+
 
 #[derive(Debug)]
 struct SystemInterface {
@@ -319,26 +352,13 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>) -> Result<toki
 
         println!("opening netlink socket for monitor");
 
-        // Open the netlink socket
-        let (mut connection, handle, mut messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
-
-        // These flags specify what kinds of broadcast messages we want to listen for.
-        // we just care about LINK changes
-        let mgroup_flags = RTMGRP_IPV6_ROUTE | RTMGRP_IPV6_IFADDR | RTMGRP_LINK;
-
-        println!("starting parent processing loop");
-
-        // A netlink socket address is created with said flags.
-        let addr = SocketAddr::new(0, mgroup_flags);
-        // Said address is bound so new conenctions and thus new message broadcasts can be received.
-        connection.socket_mut().bind(&addr).expect("failed to bind");
-        rt1.spawn(connection);
+        let mut nl = NetlinkInterface::new(&rt1);
 
         /* first scan and process existing interfaces */
-        scan_interfaces(&mut si, &handle).await;
+        scan_interfaces(&mut si, &nl.handle).await;
 
         /* then process anything new that arrives */
-        while let Some((message, _)) = messages.next().await {
+        while let Some((message, _)) = nl.messages.next().await {
             let payload = &message.payload;
             match payload {
                 InnerMessage(NewLink(lm)) => {
@@ -371,7 +391,7 @@ mod tests {
         LinkMessage {
             header: LinkHeader {
                 interface_family: 0,
-                index: 0,
+                index: 1,
                 link_layer_type: ARPHRD_NETROM,
                 flags: 0,
                 change_mask: 0,
@@ -383,15 +403,93 @@ mod tests {
         }
     }
 
-    async fn a_basic_eth0() -> Result<(), std::io::Error> {
-        let eth0 = make_eth0();
-        let mut si = SystemInterfaces::empty();
+    fn make_eth0_slave() -> netlink_packet_route::LinkMessage {
+        LinkMessage {
+            header: LinkHeader {
+                interface_family: 0,
+                index: 1,
+                link_layer_type: ARPHRD_NETROM,
+                flags: 0,
+                change_mask: 0,
+            },
+            nlas: vec![
+                Nla::IfName("eth0".to_string()),
+                Nla::TxQueueLen(0),
+                Nla::Master(2)
+            ],
+        }
+    }
 
-        gather_parent_link_info(&mut si, &eth0, true).await.unwrap();
+    fn make_trusted() -> netlink_packet_route::LinkMessage {
+        use netlink_packet_route::link::nlas::Info;
+        use netlink_packet_route::link::nlas::InfoKind;
+
+        LinkMessage {
+            header: LinkHeader {
+                interface_family: 0,
+                index: 2,
+                link_layer_type: ARPHRD_NETROM,
+                flags: 0,
+                change_mask: 0,
+            },
+            nlas: vec![
+                Nla::IfName("trusted".to_string()),
+                Nla::OperState(State::Up),
+                Nla::TxQueueLen(0),
+                Nla::Info(vec![Info::Kind(InfoKind::Bridge)]),
+            ],
+        }
+    }
+
+    async fn a_basic_eth0(si: &mut SystemInterfaces) -> Result<(), std::io::Error> {
+        let eth0 = make_eth0();
+
+        gather_parent_link_info(si, &eth0, true).await.unwrap();
+        assert_eq!(si.ifcount, 1);
+
+        // insert it again, but note how it does not add new things
+        gather_parent_link_info(si, &eth0, true).await.unwrap();
         assert_eq!(si.ifcount, 1);
 
         Ok(())
     }
+
+    async fn a_basic_bridge(si: &mut SystemInterfaces) -> Result<(), std::io::Error> {
+        let trusted = make_trusted();
+
+        gather_parent_link_info(si, &trusted, true).await.unwrap();
+        assert_eq!(si.ifcount, 1);
+
+        let trusted_l = si.get_entry_by_ifindex(2).await;
+        {
+            let trusted1 = trusted_l.lock().await;
+            assert_eq!(trusted1.bridge_master, true);
+            assert_eq!(trusted1.ifindex, 2);
+            assert_eq!(trusted1.up, true);
+            assert_eq!(trusted1.bridge_master, true);
+            assert_eq!(trusted1.bridge_slave,  false);
+            assert_eq!(trusted1.macvlan,       false);
+            assert_eq!(trusted1.has_dull_if,   false);
+            assert_eq!(trusted1.ignored,       false);
+        }
+
+        Ok(())
+    }
+
+    async fn a_bridge(si: &mut SystemInterfaces) -> Result<(), std::io::Error> {
+        let trusted = make_trusted();
+
+        gather_parent_link_info(si, &trusted, true).await.unwrap();
+        assert_eq!(si.ifcount, 1);
+
+        let eth0_slave = make_eth0_slave();
+        gather_parent_link_info(si, &eth0_slave, true).await.unwrap();
+        assert_eq!(si.ifcount, 2);
+
+        Ok(())
+    }
+
+
 
     #[allow(unused_macros)]
     macro_rules! aw {
@@ -402,7 +500,33 @@ mod tests {
 
     #[test]
     fn basic_eth0() {
-        assert_eq!(aw!(a_basic_eth0()).unwrap(), ());
+        let mut si = SystemInterfaces::empty();
+        assert_eq!(aw!(a_basic_eth0(&mut si)).unwrap(), ());
+    }
+
+    #[test]
+    fn basic_bridge_trusted() {
+        let mut si = SystemInterfaces::empty();
+        assert_eq!(aw!(a_basic_bridge(&mut si)).unwrap(), ());
+    }
+
+    #[test]
+    fn bridge_trusted_eth0() {
+        let mut si = SystemInterfaces::empty();
+        assert_eq!(aw!(a_bridge(&mut si)).unwrap(), ());
+    }
+
+    async fn do_calculate(_si: &mut SystemInterfaces) -> Result<(), std::io::Error> {
+        //si.calculate_needed_dull().await.unwrap();
+        Ok(())
+    }
+
+    #[test]
+    fn should_add_ethernet_pair() {
+        let mut si = SystemInterfaces::empty();
+        assert_eq!(aw!(a_bridge(&mut si)).unwrap(), ());
+
+        assert_eq!(aw!(do_calculate(&mut si)).unwrap(), ());
     }
 }
 
