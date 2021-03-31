@@ -51,7 +51,7 @@ use netlink_packet_route::{
 use crate::dull::IfIndex;
 
 #[async_trait]
-trait NetlinkManager {
+trait NetlinkManager: Send + Sync {
     async fn create_ethernet_pair_for_bridge(self: &Self,
                                              dullpid:  Pid,
                                              bridgeif: IfIndex) -> Result<(), rtnetlink::Error>;
