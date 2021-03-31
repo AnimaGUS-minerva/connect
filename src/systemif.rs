@@ -17,8 +17,11 @@
 
 extern crate sysctl;
 
+
 use std::sync::Arc;
 use std::collections::HashMap;
+use nix::unistd::Pid;
+use async_trait::async_trait;
 use futures::stream::{StreamExt, TryStreamExt};
 use futures::lock::Mutex;
 //use tokio::process::{Command};
@@ -46,16 +49,20 @@ use netlink_packet_route::{
 };
 //use std::os::unix::net::UnixStream;
 //use sysctl::Sysctl;
-use crate::dull;
 use crate::dull::IfIndex;
 
+#[async_trait]
 trait NetlinkManager {
-
+    async fn create_ethernet_pair_for_bridge(self: &Self,
+                                             dullpid:  Pid,
+                                             bridgeif: IfIndex) -> Result<(), rtnetlink::Error>;
+    async fn create_macvlan(self: &Self,
+                            dullpid:  Pid,
+                            physif: IfIndex) -> Result<(), rtnetlink::Error>;
 }
 
 struct NetlinkInterface {
     pub handle:     Handle,
-    //messages:   &'a u32,
     pub messages:   futures::channel::mpsc::UnboundedReceiver<(NetlinkMessage<RtnlMessage>, SocketAddr)>,
 }
 
@@ -76,6 +83,110 @@ impl NetlinkInterface {
         rt.spawn(connection);
 
         NetlinkInterface { handle: handle, messages: messages }
+    }
+
+    pub async fn find_interface_ifindex(self: &NetlinkInterface,
+                                        ifname: &String) -> Result<Option<IfIndex>, rtnetlink::Error> {
+        let mut ifentry = self.handle.link().get().set_name_filter(ifname.to_string()).execute();
+        if let Some(link) = ifentry.try_next().await? {
+            return Ok(Some(link.header.index));
+        } else {
+            return Ok(None);   // ENOTFOUND might be better?
+        }
+    }
+
+    pub async fn addremove_bridge(self: &NetlinkInterface,
+                                  adding: bool,
+                                  childlink: IfIndex, parentlink: IfIndex) -> Result<(), rtnetlink::Error> {
+
+        // put the interface up or down
+        if adding {
+            self.handle
+                .link()
+                .set(childlink)
+                .up()
+                .execute()
+                .await?;
+        } else {
+            self.handle
+                .link()
+                .set(childlink)
+                .down()
+                .execute()
+                .await?;
+        }
+
+        // add/remove it into the bridge
+        self.handle
+            .link()
+            .set(childlink)
+            .master(parentlink)
+            .execute()
+            .await?;
+        Ok(())
+    }
+
+}
+
+#[async_trait]
+impl NetlinkManager for NetlinkInterface {
+    async fn create_ethernet_pair_for_bridge(self: &Self,
+                                             dullpid:  Pid,
+                                             bridgeif: IfIndex) -> Result<(), rtnetlink::Error> {
+
+        // need to generate a name for the interface.
+        // use incrementing values with "pullXXX" and "dullXXX", where XXX is the bridge_ifindex.
+
+        let pname = format!("pull{:03}", bridgeif);
+        let dname = format!("dull{:03}", bridgeif);
+
+        let result = self.handle
+            .link()
+            .add()
+            .veth(dname.clone().into(), pname.clone().into())
+            .execute()
+            .await;
+
+        match result {
+            Err(NetlinkError(ErrorMessage { code: -17, .. })) => { println!("network pair already created"); },
+            Ok(x) => { println!("okay with result: {:?}", x); },
+            _ => {
+                println!("new error: {:?}", result);
+                std::process::exit(0);
+            }
+        };
+
+        let mut dull0 = self.handle.link().get().set_name_filter(dname.clone()).execute();
+        if let Some(link) = dull0.try_next().await? {
+            self.handle
+                .link()
+                .set(link.header.index)
+                .up()
+                .execute()
+                .await?;
+
+            // Punt one into the DULL namespace!
+            self.handle
+                .link()
+                .set(link.header.index)
+                .setns_by_pid(dullpid.as_raw() as u32)
+                .execute()
+                .await?;
+        } else {
+            println!("no child link {} found", dname);
+            return Ok(());
+        }
+
+        let somelink = self.find_interface_ifindex(&pname).await.unwrap();
+        if let Some(pull0link) = somelink {
+            self.addremove_bridge(true, pull0link, bridgeif).await?;
+            return Ok(());
+        }
+        return Ok(());   // WRONG
+    }
+
+    async fn create_macvlan(self: &Self, _dullpid: Pid, _physif: IfIndex) -> Result<(), rtnetlink::Error> {
+        return Ok(())
     }
 }
 
@@ -137,90 +248,6 @@ impl SystemInterfaces {
         self.ifcount += inc;
         return ifnl;
     }
-}
-
-
-pub async fn addremove_bridge(updown: bool,
-                          handle: &Handle, _dull: &dull::Dull,
-                          pname: &String, masterlink: u32) -> Result<(), Error> {
-
-    let mut pull0 = handle.link().get().set_name_filter(pname.to_string()).execute();
-    if let Some(link) = pull0.try_next().await? {
-        // put the interface up or down
-        if updown {
-            handle
-                .link()
-                .set(link.header.index)
-                .up()
-                .execute()
-                .await?;
-        } else {
-            handle
-                .link()
-                .set(link.header.index)
-                .down()
-                .execute()
-                .await?;
-        }
-
-        // add/remove it into the trusted bridge
-        handle
-            .link()
-            .set(link.header.index)
-            .master(masterlink)
-            .execute()
-            .await?;
-    }
-    Ok(())
-}
-
-pub async fn setup_dull_bridge(handle: &Handle, dull: &dull::Dull, bridge: &String, name: &String) -> Result<(), Error> {
-
-    let mut trusted = handle.link().get().set_name_filter(bridge.to_string()).execute();
-    let trusted_link = match trusted.try_next().await? {
-        Some(link) => link,
-        None => { println!("did not find bridge {}", bridge); return Ok(()); }
-    };
-
-    let mut pname = name.clone();
-    pname.insert(0, 'p');
-
-    let result = handle
-        .link()
-        .add()
-        .veth(name.clone().into(), pname.clone().into())
-        .execute()
-        .await;
-    match result {
-        Err(NetlinkError(ErrorMessage { code: -17, .. })) => { println!("network pair already created"); },
-        Ok(_) => {},
-        _ => {
-            println!("new error: {:?}", result);
-            std::process::exit(0);
-        }
-    };
-
-    let mut dull0 = handle.link().get().set_name_filter(name.clone()).execute();
-    if let Some(link) = dull0.try_next().await? {
-        handle
-            .link()
-            .set(link.header.index)
-            .up()
-            .execute()
-            .await?;
-        handle
-            .link()
-            .set(link.header.index)
-            .setns_by_pid(dull.dullpid.as_raw() as u32)
-            .execute()
-            .await?;
-    } else {
-        println!("no child link {} found", name);
-        return Ok(());
-    }
-
-    addremove_bridge(true, handle, dull, &pname, trusted_link.header.index).await?;
-    return Ok(());
 }
 
 async fn gather_parent_link_info(si: &mut SystemInterfaces,
