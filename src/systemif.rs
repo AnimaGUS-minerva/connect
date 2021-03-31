@@ -291,7 +291,7 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                                  lm: &LinkMessage,
                                  newlink: bool) -> Result<(), Error> {
     let ifindex = lm.header.index;
-    println!("processing ifindex: {:?} added={}", ifindex, newlink);
+    si.link_debug(format!("processing ifindex: {:?} added={}", ifindex, newlink));
 
     /* look up reference this ifindex, or create it */
     let ifna = SystemInterfaces::get_entry_by_ifindex(si, ifindex).await;
@@ -377,6 +377,8 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
         }
     }
 
+    println!("processed {}[{}] added={} {}", ifn.ifname, ifindex, newlink, ifn.bridge_master_str());
+
     if ifn.bridge_master {
         if let Some(childif) = ifn.ifchild {
             println!("  bridge parent interface {} has child pair {}", ifn.ifname, childif);
@@ -397,7 +399,7 @@ async fn scan_interfaces(si: &mut SystemInterfaces, handle: &Handle) {
     let mut cnt: u32 = 0;
 
     while let Some(link) = list.try_next().await.unwrap() {
-        println!("message {}", cnt);
+        si.link_debug(format!("message {}", cnt));
         gather_parent_link_info(si, &link, true).await.unwrap();
         cnt += 1;
     }
