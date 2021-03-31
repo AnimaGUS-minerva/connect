@@ -249,7 +249,7 @@ impl SystemInterfaces {
         }
     }
 
-    pub async fn get_entry_by_ifindex<'a>(&'a mut self, ifindex: IfIndex) -> &'a Arc<Mutex<SystemInterface>> {
+    pub async fn get_entry_by_ifindex<'a>(&'a mut self, ifindex: IfIndex) -> Arc<Mutex<SystemInterface>> {
         let mut inc = 0;
         let ifnl = self.system_interfaces.entry(ifindex).or_insert_with(|| {
             inc += 1;
@@ -258,7 +258,7 @@ impl SystemInterfaces {
 
         /* have to increment down here, because block above can not use self */
         self.ifcount += inc;
-        return ifnl;
+        return ifnl.clone();
     }
 
     pub async fn calculate_needed_dull(self: &Self,
@@ -278,9 +278,9 @@ impl SystemInterfaces {
         Ok(())
     }
 
-    pub fn link_debug(self: &Self,
-                      msg: &String) {
-        if(self.link_debugging) {
+    pub fn link_debug(self: &mut Self,
+                      msg: String) {
+        if self.link_debugging {
             println!("{}", msg);
         }
     }
@@ -295,14 +295,13 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
 
     /* look up reference this ifindex, or create it */
     let ifna = SystemInterfaces::get_entry_by_ifindex(si, ifindex).await;
-
-    let mut ifn  = ifna.lock().await;
+    let mut ifn = ifna.lock().await;
 
     /* see if we previously ignored it! */
-    if ifn.ignored && newlink {
-        println!("  ignored interface {}",ifn.ifname);
-        return Ok(());
-    }
+    //if ifn.ignored && newlink {
+    //        println!("  ignored interface {}",ifn.ifname);
+    //    return Ok(());
+    //}
 
     for nlas in &lm.nlas {
         use netlink_packet_route::link::nlas::Nla;
