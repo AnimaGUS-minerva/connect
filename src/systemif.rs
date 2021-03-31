@@ -206,12 +206,6 @@ struct SystemInterface {
     pub has_dull_if:   bool,
 }
 
-/* so far only info we care about */
-struct SystemInterfaces {
-    pub system_interfaces:  HashMap<u32, Arc<Mutex<SystemInterface>>>,
-    pub ifcount: u32,
-}
-
 impl SystemInterface {
     pub fn empty(ifi: IfIndex) -> SystemInterface {
         SystemInterface {
@@ -241,10 +235,17 @@ impl SystemInterface {
 
 }
 
+/* so far only info we care about */
+struct SystemInterfaces {
+    pub system_interfaces:  HashMap<u32, Arc<Mutex<SystemInterface>>>,
+    pub ifcount: u32,
+    pub link_debugging: bool
+}
+
 impl SystemInterfaces {
     pub fn empty() -> SystemInterfaces {
         SystemInterfaces {
-            system_interfaces:  HashMap::new(), ifcount: 0
+            system_interfaces:  HashMap::new(), ifcount: 0, link_debugging: false
         }
     }
 
@@ -277,6 +278,13 @@ impl SystemInterfaces {
         Ok(())
     }
 
+    pub fn link_debug(self: &Self,
+                      msg: &String) {
+        if(self.link_debugging) {
+            println!("{}", msg);
+        }
+    }
+
 }
 
 async fn gather_parent_link_info(si: &mut SystemInterfaces,
@@ -300,23 +308,23 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
         use netlink_packet_route::link::nlas::Nla;
         match nlas {
             Nla::IfName(name) => {
-                println!("  ifname: {}", name);
+                si.link_debug(format!("  ifname: {}", name));
                 if name == "lo" {
                     ifn.ignored = true;
                 }
                 ifn.ifname = name.to_string();
             },
             Nla::Mtu(bytes) => {
-                println!("  mtu: {}", *bytes);
+                si.link_debug(format!("  mtu: {}", *bytes));
                 ifn.mtu = *bytes;
             },
             Nla::OperState(state) => {
                 match state {
                     State::Up => {
-                        println!("  device is up");
+                        si.link_debug(format!("  device is up"));
                         ifn.up = true;
                     },
-                    _ => { println!("  device in state {:?}", state); }
+                    _ => { si.link_debug(format!("  device in state {:?}", state)); }
                 }
             }
             Nla::Info(listofstuff) => {
@@ -326,7 +334,7 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                 for stuff in listofstuff {
                     match stuff {
                         Info::Kind(kind) => {
-                            println!("  is it a bridge: {:?}", kind);
+                            si.link_debug(format!("  is it a bridge: {:?}", kind));
                             match kind {
                                 InfoKind::Bridge => {
                                     ifn.bridge_master = true;
@@ -334,7 +342,7 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                                 InfoKind::MacVlan => {
                                     ifn.macvlan = true;
                                 }
-                                _ => { println!("2 other kind {:?}", kind); }
+                                _ => { si.link_debug(format!("2 other kind {:?}", kind)); }
                             }
                         }
                         Info::Data(_data) => { /* ignore bridge data */ }
@@ -343,7 +351,7 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                             /* what exactly to do with this data? */
                             ifn.bridge_slave = true;
                         }
-                        _ => { println!("other info: {:?}", stuff); }
+                        _ => { si.link_debug(format!("other info: {:?}", stuff)); }
                     }
                 }
             }
@@ -351,9 +359,9 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                 if newlink {
                     /* could be a bridge, or could be a MACvlan */
                     ifn.ifmaster = Some(*ifmaster);
-                    println!("   master interface is {}", *ifmaster);
+                    si.link_debug(format!("   master interface is {}", *ifmaster));
                 } else {
-                    println!("   removed interface {} from {}", ifindex, *ifmaster);
+                    si.link_debug(format!("   removed interface {} from {}", ifindex, *ifmaster));
                     ifn.ifmaster = None;
                 }
             }
@@ -366,7 +374,7 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
             Nla::GsoMaxSegs(_) | Nla::GsoMaxSize(_) | Nla::AfSpecInet(_) | Nla::AfSpecBridge(_) |
             Nla::ProtoInfo(_) | Nla::Event(_) |
             Nla::Stats64(_) | Nla::Stats(_) | Nla::Xdp(_) => { /* nothing */ }
-            _ => { println!("index: {} system if nlas info: {:?}", ifindex, nlas); }
+            _ => { si.link_debug(format!("index: {} system if nlas info: {:?}", ifindex, nlas)); }
         }
     }
 
