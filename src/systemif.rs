@@ -270,7 +270,7 @@ impl SystemInterfaces {
                      ifn.ignored_str(), ifn.bridge_master_str());
 
             if ifn.bridge_master && !ifn.has_dull_if {
-                println!("     creating new ethernet pair {}", ifn.ifindex);
+                println!("     creating new ethernet pair for {}", ifn.ifindex);
                 ni.create_ethernet_pair_for_bridge(dull_pid, ifn.ifindex).await.unwrap();
             }
         }
