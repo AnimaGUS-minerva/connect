@@ -230,6 +230,16 @@ impl SystemInterface {
             has_dull_if: false,
         }
     }
+
+    pub fn ignored_str(self: &Self) -> String {
+        if self.ignored { "ignored".to_string() } else { "active".to_string() }
+    }
+
+    pub fn bridge_master_str(self: &Self) -> String {
+        if self.bridge_master { "bridge".to_string() } else { "normal".to_string() }
+    }
+
+
 }
 
 impl SystemInterfaces {
@@ -248,6 +258,24 @@ impl SystemInterfaces {
         self.ifcount += inc;
         return ifnl;
     }
+
+    pub async fn calculate_needed_dull(self: &Self,
+                                       ni: &dyn NetlinkManager,
+                                       dull_pid: Pid) -> Result<(), rtnetlink::Error> {
+
+        for (k,ifnl) in &self.system_interfaces {
+            let ifn = ifnl.lock().await;
+            println!(" {:03}: name: {} {} {}", k, ifn.ifname,
+                     ifn.ignored_str(), ifn.bridge_master_str());
+
+            if ifn.bridge_master && !ifn.has_dull_if {
+                println!("     creating new ethernet pair {}", ifn.ifindex);
+                ni.create_ethernet_pair_for_bridge(dull_pid, ifn.ifindex).await.unwrap();
+            }
+        }
+        Ok(())
+    }
+
 }
 
 async fn gather_parent_link_info(si: &mut SystemInterfaces,
@@ -414,6 +442,21 @@ mod tests {
     use netlink_packet_route::LinkHeader;
     use netlink_packet_route::link::nlas::Nla;
 
+    struct FakeNetlinkInterface {
+    }
+    #[async_trait]
+    impl NetlinkManager for FakeNetlinkInterface {
+        async fn create_ethernet_pair_for_bridge(self: &Self,
+                                                 _dullpid:  Pid,
+                                                 bridgeif: IfIndex) -> Result<(), rtnetlink::Error> {
+            println!("creating new etherpair for {}", bridgeif);
+            return Ok(());
+        }
+        async fn create_macvlan(self: &Self, _dullpid: Pid, _physif: IfIndex) -> Result<(), rtnetlink::Error> {
+            return Ok(())
+        }
+    }
+
     fn make_eth0() -> netlink_packet_route::LinkMessage {
         LinkMessage {
             header: LinkHeader {
@@ -543,8 +586,11 @@ mod tests {
         assert_eq!(aw!(a_bridge(&mut si)).unwrap(), ());
     }
 
-    async fn do_calculate(_si: &mut SystemInterfaces) -> Result<(), std::io::Error> {
-        //si.calculate_needed_dull().await.unwrap();
+    async fn do_calculate(si: &mut SystemInterfaces) -> Result<(), std::io::Error> {
+
+        let dull_pid = Pid::from_raw(1234);
+        let ni = FakeNetlinkInterface {};
+        si.calculate_needed_dull(&ni, dull_pid).await.unwrap();
         Ok(())
     }
 
