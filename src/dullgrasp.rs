@@ -24,11 +24,17 @@ use std::net::Ipv6Addr;
 use tokio::net::UdpSocket;
 use tokio::time::{delay_for, Duration};
 use std::io::Error;
+use std::io::ErrorKind;
+//use std::net::SocketAddrV6;
 use std::net::{SocketAddrV6,SocketAddr};
 use std::sync::Arc;
 use futures::lock::Mutex;
+use tokio::process::{Command};
 use rand::Rng;
 use netlink_packet_sock_diag::constants::IPPROTO_UDP;
+
+use nix::sys::socket::{self, sockopt::ReusePort, sockopt::ReuseAddr};
+use std::{os::unix::io::AsRawFd};
 
 use cbor::CborType;
 use cbor::decoder::decode as cbor_decode;
@@ -60,23 +66,62 @@ impl GraspDaemon {
         let rsin6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED,
                                      grasp::GRASP_PORT as u16, 0, ifindex);
 
-        let recv = UdpSocket::bind(rsin6).await.unwrap();
+        let basic_socket = std::net::UdpSocket::bind(rsin6);
+        match basic_socket {
+            Ok(brecv) => {
+                // set port/address reuse options.
+                match socket::setsockopt(brecv.as_raw_fd(), ReusePort, &true) {
+                    Err(thing) => {
+                        println!("cailed to mark socket as ReusePort for {}:{} {}", ifindex, llv6, thing);
+                        return Err(Error::new(ErrorKind::Other, "Reuse Port failed"));
+                    }
+                    Ok(_) => { }
+                }
+                match socket::setsockopt(brecv.as_raw_fd(), ReuseAddr, &true) {
+                    Err(thing) => {
+                        println!("cailed to mark socket as ReuseAddr for {}:{} {}", ifindex, llv6, thing);
+                        return Err(Error::new(ErrorKind::Other, "Reuse Addr failed"));
+                    }
+                    Ok(_) => { }
+                }
+                let recv = UdpSocket::from_std(brecv).unwrap();
 
-        // join it to a multicast group
-        let grasp_mcast = "FF02:0:0:0:0:0:0:13".parse::<Ipv6Addr>().unwrap();
-        recv.join_multicast_v6(&grasp_mcast, ifindex).unwrap();
+                // join it to a multicast group
+                let grasp_mcast = "FF02:0:0:0:0:0:0:13".parse::<Ipv6Addr>().unwrap();
+                recv.join_multicast_v6(&grasp_mcast, ifindex).unwrap();
 
-        let ssin6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED,
-                                      0 as u16, 0, ifindex);
-        let send = UdpSocket::bind(ssin6).await.unwrap();
+                let ssin6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED,
+                                              0 as u16, 0, ifindex);
+                let send = UdpSocket::bind(ssin6).await.unwrap();
 
-        let gp = GraspDaemon { addr: llv6,
-                               grasp_dest:  SocketAddr::V6(SocketAddrV6::new(grasp_mcast, grasp::GRASP_PORT as u16, 0, ifindex)),
-                               dullif: lifn.clone(),
-                               dullchild: child.clone(),
-        };
-
-        return Ok((gp, recv, send))
+                let gp = GraspDaemon { addr: llv6,
+                                       grasp_dest:  SocketAddr::V6(SocketAddrV6::new(grasp_mcast, grasp::GRASP_PORT as u16, 0, ifindex)),
+                                       dullif: lifn.clone(),
+                                       dullchild: child.clone(),
+                };
+                return Ok((gp, recv, send))
+            }
+            Err(err) => {
+                if err.kind() == ErrorKind::AddrInUse {
+                    println!("Address already in use?");
+                }
+                Command::new("ss")
+                    .arg("-uan")
+                    .status().await
+                    .expect("ss command failed to start");
+                Command::new("ip")
+                    .arg("link")
+                    .arg("ls")
+                    .status().await
+                    .expect("ss command failed to start");
+                Command::new("ip")
+                    .arg("addr")
+                    .arg("ls")
+                    .status().await
+                    .expect("ss command failed to start");
+                return Err(err);
+            }
+        }
     }
 
     pub async fn read_loop(gd: Arc<Mutex<GraspDaemon>>,
