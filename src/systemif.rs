@@ -26,7 +26,6 @@ use futures::stream::{StreamExt, TryStreamExt};
 use futures::lock::Mutex;
 //use tokio::process::{Command};
 use netlink_packet_route::ErrorMessage;
-use netlink_packet_route::constants::*;
 use netlink_packet_route::link::nlas::State;
 use rtnetlink::{
     constants::{RTMGRP_IPV6_ROUTE, RTMGRP_IPV6_IFADDR, RTMGRP_LINK},
@@ -255,6 +254,8 @@ impl SystemInterfaces {
             inc += 1;
             Arc::new(Mutex::new(SystemInterface::empty(ifindex)))
         });
+
+        /* have to increment down here, because block above can not use self */
         self.ifcount += inc;
         return ifnl;
     }
@@ -441,6 +442,7 @@ mod tests {
     use super::*;
     use netlink_packet_route::LinkHeader;
     use netlink_packet_route::link::nlas::Nla;
+    use netlink_packet_route::constants::*;
 
     struct FakeNetlinkInterface {
     }

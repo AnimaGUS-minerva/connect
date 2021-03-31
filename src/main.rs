@@ -145,22 +145,8 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
     println!("child ready, now starting netlink thread");
 
     // start up thread to listen to netlink in parent space, looking for new interfaces
-    let _parentloop = systemif::parent_processing(&rt).await;
-
+    let _parentloop = systemif::parent_processing(&rt, dull.dullpid).await;
     println!("parent processing loop started");
-
-    // create a netlink connection for use with the hacky trusted/dull0 setup.
-    //let (connection, handle, _) = new_connection().unwrap();
-    //rt.spawn(connection);
-
-        //println!("creating dull0");
-    //let ifname     = "dull0".to_string();
-    //let bridgename = "trusted".to_string();
-    //let bridge = systemif::setup_dull_bridge(&handle, &dull, &bridgename, &ifname).await;
-    //match bridge {
-    //    Err(e) => { println!("Failing to create dull: {}", e); return Ok(()); },
-    //    _ => {}
-    //};
 
     let (mut sender, mut receiver) = mpsc::channel(2);
 
