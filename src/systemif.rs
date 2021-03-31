@@ -397,7 +397,8 @@ async fn scan_interfaces(si: &mut SystemInterfaces, handle: &Handle) {
 }
 
 
-pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>) -> Result<tokio::task::JoinHandle<Result<(),Error>>, String> {
+pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>,
+                               dull_pid: Pid) -> Result<tokio::task::JoinHandle<Result<(),Error>>, String> {
 
     let rt1 = rt.clone();
 
@@ -412,6 +413,9 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>) -> Result<toki
 
         /* first scan and process existing interfaces */
         scan_interfaces(&mut si, &nl.handle).await;
+
+        /* now do any calculations needed */
+        si.calculate_needed_dull(&nl, dull_pid).await.unwrap();
 
         /* then process anything new that arrives */
         while let Some((message, _)) = nl.messages.next().await {
@@ -429,6 +433,9 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>) -> Result<toki
                 InnerMessage(DelRoute(_stuff)) => { /* nothing */ }
                 _ => { println!("msg type: {:?}", payload); }
             }
+
+            /* now do any calculations needed */
+            //si.calculate_needed_dull(&nl, dull_pid).await.unwrap();
         };
         Ok(())
     });
