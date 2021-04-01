@@ -91,27 +91,14 @@ impl OpenswanWhackInterface {
     async fn openswan_send_cmd(cmdbytes: Vec<u8>) -> Result<String, std::io::Error> {
         let mut osw = OpenswanWhackInterface::connect().await?;
 
-        let bytes1 = OpenswanWhackInterface::openswan_tag();
+        let mut bytes1 = OpenswanWhackInterface::openswan_tag();
 
-        /* just seems so stupidly non-DRY here */
+        bytes1.extend(cmdbytes);
         match osw.ctrl_sock.write_all(&bytes1).await {
-            Err(x) => {
-                if x.kind() == ErrorKind::BrokenPipe {
+            Err(e) if e.kind() == ErrorKind::BrokenPipe => {
                     return Ok("".to_string());
-                } else {
-                    return Err(x);
-                }
             }
-            _      => {}
-        }
-        match osw.ctrl_sock.write_all(&cmdbytes).await {
-            Err(x) => {
-                if x.kind() == ErrorKind::BrokenPipe {
-                    return Ok("".to_string());
-                } else {
-                    return Err(x);
-                }
-            }
+            Err(e) => { return Err(e); }
             _      => {}
         }
 
