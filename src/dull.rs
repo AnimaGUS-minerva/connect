@@ -38,7 +38,7 @@ use std::os::unix::net::UnixStream;
 //use std::os::unix::io::AsRawFd;
 use std::net::Ipv6Addr;
 use std::collections::HashMap;
-use std::process::Command;
+use tokio::process::{Command};
 use tokio::time::{delay_for, Duration};
 use tokio::signal;
 //use std::convert::TryInto;
@@ -332,6 +332,7 @@ async fn gather_link_info(ldull: &Arc<Mutex<DullChild>>, lm: LinkMessage) -> Res
             .arg("link")
             .arg("ls")
             .status()
+            .await
             .expect("ls command failed to start");
     }
 
@@ -440,8 +441,13 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
                             ifn.grasp_daemon = Some(gd.clone());
                         }
 
+                        Command::new("/root/traceosw")
+                            .status()
+                            .await
+                            .expect("traceosw command failed to start");
+
                         // poke Openswan to rescan the list of interfaces
-                        openswan::OpenswanWhackInterface::openswan_setup().await.unwrap();
+                         openswan::OpenswanWhackInterface::openswan_setup().await.unwrap();
 
                         GraspDaemon::start_loop(gd, recv, send, child.clone()).await;
                     }
@@ -520,7 +526,8 @@ pub fn create_netns() -> Result<(), String> {
     unshare(CloneFlags::CLONE_NEWNET|CloneFlags::CLONE_NEWNS).unwrap();
 
     // stackoverflow article (can not find it) says to mount /sys again.
-    Command::new("mount")
+    // can not use  the tokio version!
+    std::process::Command::new("mount")
         .arg("-t")
         .arg("sysfs")
         .arg("none")
