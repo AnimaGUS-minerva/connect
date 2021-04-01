@@ -33,9 +33,6 @@ use tokio::process::{Command};
 use rand::Rng;
 use netlink_packet_sock_diag::constants::IPPROTO_UDP;
 
-use nix::sys::socket::{self, sockopt::ReusePort, sockopt::ReuseAddr};
-use std::{os::unix::io::AsRawFd};
-
 use cbor::CborType;
 use cbor::decoder::decode as cbor_decode;
 
@@ -62,29 +59,23 @@ impl GraspDaemon {
         let ifn  = lifn.lock().await;
         let llv6 = ifn.linklocal6;
         let ifindex = ifn.ifindex;
-        //let sin6 = SocketAddrV6::new(llv6, GRASP_PORT as u16, 0, ifindex);
-        let rsin6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED,
-                                     grasp::GRASP_PORT as u16, 0, ifindex);
 
-        let basic_socket = std::net::UdpSocket::bind(rsin6);
-        match basic_socket {
-            Ok(brecv) => {
-                // set port/address reuse options.
-                match socket::setsockopt(brecv.as_raw_fd(), ReusePort, &true) {
-                    Err(thing) => {
-                        println!("cailed to mark socket as ReusePort for {}:{} {}", ifindex, llv6, thing);
-                        return Err(Error::new(ErrorKind::Other, "Reuse Port failed"));
-                    }
-                    Ok(_) => { }
-                }
-                match socket::setsockopt(brecv.as_raw_fd(), ReuseAddr, &true) {
-                    Err(thing) => {
-                        println!("cailed to mark socket as ReuseAddr for {}:{} {}", ifindex, llv6, thing);
-                        return Err(Error::new(ErrorKind::Other, "Reuse Addr failed"));
-                    }
-                    Ok(_) => { }
-                }
-                let recv = UdpSocket::from_std(brecv).unwrap();
+        use socket2::{Socket, Domain, Type};
+
+        let rsin6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED,
+                                      grasp::GRASP_PORT as u16, 0, ifindex);
+
+        // create a UDP socket
+        let rawfd = Socket::new(Domain::ipv6(), Type::dgram(), None).unwrap();
+
+        // set port/address reuse options.
+        rawfd.set_reuse_port(true).unwrap();
+        rawfd.set_reuse_address(true).unwrap();
+        rawfd.set_nonblocking(true).unwrap();
+        match rawfd.bind(&socket2::SockAddr::from(rsin6)) {
+            Ok(()) => {
+                let udp1 = rawfd.into_udp_socket();
+                let recv = UdpSocket::from_std(udp1).unwrap();
 
                 // join it to a multicast group
                 let grasp_mcast = "FF02:0:0:0:0:0:0:13".parse::<Ipv6Addr>().unwrap();
