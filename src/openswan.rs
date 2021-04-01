@@ -30,6 +30,7 @@ use tokio::net::UnixStream;
 use cbor::CborType;
 use tokio::io::AsyncWriteExt;
 use tokio::io::AsyncReadExt;
+use std::io::ErrorKind;
 use std::process::{ExitStatus};
 use tokio::process::{Command};
 use crate::openswanwhack;
@@ -92,8 +93,27 @@ impl OpenswanWhackInterface {
 
         let bytes1 = OpenswanWhackInterface::openswan_tag();
 
-        osw.ctrl_sock.write_all(&bytes1).await?;
-        osw.ctrl_sock.write_all(&cmdbytes).await?;
+        /* just seems so stupidly non-DRY here */
+        match osw.ctrl_sock.write_all(&bytes1).await {
+            Err(x) => {
+                if x.kind() == ErrorKind::BrokenPipe {
+                    return Ok("".to_string());
+                } else {
+                    return Err(x);
+                }
+            }
+            _      => {}
+        }
+        match osw.ctrl_sock.write_all(&cmdbytes).await {
+            Err(x) => {
+                if x.kind() == ErrorKind::BrokenPipe {
+                    return Ok("".to_string());
+                } else {
+                    return Err(x);
+                }
+            }
+            _      => {}
+        }
 
         let mut results = String::new();
         osw.ctrl_sock.read_to_string(&mut results).await?;
