@@ -148,7 +148,7 @@ impl NetlinkManager for NetlinkInterface {
 
         match result {
             Err(NetlinkError(ErrorMessage { code: -17, .. })) => { println!("network pair already created"); },
-            Ok(x) => { println!("okay with result: {:?}", x); },
+            Ok(_x) => { },
             _ => {
                 println!("new error: {:?}", result);
                 std::process::exit(0);
@@ -377,7 +377,7 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
         }
     }
 
-    println!("processed {}[{}] added={} {}", ifn.ifname, ifindex, newlink, ifn.bridge_master_str());
+    println!("processed {:>16}[{}] added={} {}", ifn.ifname, ifindex, newlink, ifn.bridge_master_str());
 
     if ifn.bridge_master {
         if let Some(childif) = ifn.ifchild {
