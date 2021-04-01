@@ -447,15 +447,17 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
                             ifn.grasp_daemon = Some(gd.clone());
                         }
 
-                        Command::new("/root/traceosw")
-                            .status()
-                            .await
-                            .expect("traceosw command failed to start");
-
-                        // poke Openswan to rescan the list of interfaces
-                         openswan::OpenswanWhackInterface::openswan_setup().await.unwrap();
+                        //Command::new("/root/traceosw")
+                        //.status()
+                        //                            .await
+                        //.expect("traceosw command failed to start");
 
                         GraspDaemon::start_loop(gd, recv, send, child.clone()).await;
+
+                        // delay to let interfaces become stable.
+                        delay_for(Duration::from_millis(200)).await;
+                        // poke Openswan to rescan the list of interfaces
+                        openswan::OpenswanWhackInterface::openswan_setup().await.unwrap();
                     }
                 }
                 InnerMessage(NewRoute(_thing)) => {
