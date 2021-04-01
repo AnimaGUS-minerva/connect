@@ -30,6 +30,7 @@ use tokio::io::{AsyncWriteExt, AsyncReadExt};
 
 use crate::dull::Dull;
 
+#[derive(Clone)]
 pub struct DebugOptions {
     pub allow_router_advertisement: bool,
     pub debug_namespaces:  bool,
@@ -41,6 +42,13 @@ impl DebugOptions {
             allow_router_advertisement: false,
             debug_namespaces:  false,
             debug_graspdaemon: false
+        }
+    }
+
+    pub fn debug_info(self: &mut Self,
+                      msg: String) {
+        if self.debug_namespaces {
+            println!("{}", msg);
         }
     }
 }

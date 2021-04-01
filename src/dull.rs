@@ -153,42 +153,44 @@ impl DullData {
         }
     }
 
-    pub async fn get_entry_by_ifindex(self: &mut DullData, ifindex: IfIndex) -> &Arc<Mutex<DullInterface>> {
+    pub async fn get_entry_by_ifindex<'a>(self: &'a mut DullData, ifindex: IfIndex) -> Arc<Mutex<DullInterface>> {
         let ifnl = self.interfaces.entry(ifindex).or_insert_with(|| { Arc::new(Mutex::new(DullInterface::empty(ifindex)))});
-        return ifnl;
+        return ifnl.clone();
     }
 
     pub async fn store_link_info(self: &mut DullData, lm: LinkMessage, ifindex: IfIndex) {
 
+        let mut mydebug = self.debug.clone();
         let results = {
             let     ifna = self.get_entry_by_ifindex(ifindex).await;
             let mut ifn  = ifna.lock().await;
+
 
             for nlas in lm.nlas {
                 use netlink_packet_route::link::nlas::Nla;
                 match nlas {
                     Nla::IfName(name) => {
-                        println!("ifname: {}", name);
+                        mydebug.debug_info(format!("ifname: {}", name));
                         if name.len() > 3 && name[0..4] == "acp_".to_string() {
                             ifn.is_acp = true;
                         }
                         ifn.ifname = name;
                     },
                     Nla::Mtu(bytes) => {
-                        println!("mtu: {}", bytes);
+                        mydebug.debug_info(format!("mtu: {}", bytes));
                         ifn.mtu = bytes;
                     },
                     Nla::Address(addrset) => {
-                        println!("lladdr: {:0x}:{:0x}:{:0x}:{:0x}:{:0x}:{:0x}", addrset[0], addrset[1], addrset[2], addrset[3], addrset[4], addrset[5]);
+                        mydebug.debug_info(format!("lladdr: {:0x}:{:0x}:{:0x}:{:0x}:{:0x}:{:0x}", addrset[0], addrset[1], addrset[2], addrset[3], addrset[4], addrset[5]));
                     },
                     Nla::OperState(state) => {
                         match state {
                             State::Up => {
-                                println!("device is up");
+                                mydebug.debug_info(format!("device is up"));
                                 ifn.oper_state = state;
                             },
                             _ => {
-                                println!("device is not up: {:?}", state);
+                                mydebug.debug_info(format!("device is not up: {:?}", state));
                             }
                         };
                     },
@@ -197,7 +199,7 @@ impl DullData {
                             match ip {
                                 AfSpecInet::Inet(_v4) => { },
                                 AfSpecInet::Inet6(_v6) => {
-                                    //println!("v6: {:?}", v6);
+                                    //mydebug.debug_info(format!("v6: {:?}", v6));
                                 }
                                 _ => {}
                             }
@@ -208,7 +210,7 @@ impl DullData {
                     }
                 }
             }
-            println!("");
+            mydebug.debug_info(format!(""));
             let action = match ifn.oper_state {
                 State::Down => { true },
                 _ => { false }
@@ -216,10 +218,10 @@ impl DullData {
             (action, ifn.ifindex.clone(), ifn.ifname.clone(), ifn.is_acp)
         };
 
-        //println!("about interface {}: state: {:?} acp: {:?}", results.2, results.0, results.3);
+        //mydebug.debug_info(format!("about interface {}: state: {:?} acp: {:?}", results.2, results.0, results.3));
         if results.3==false && results.0==true {
             /* results.3==is_acp (false), results.0==Down */
-            println!("bringing interface {} up", results.2);
+            mydebug.debug_info(format!("bringing interface {} up", results.2));
 
             let name = results.2;
 
@@ -237,8 +239,8 @@ impl DullData {
             };
 
             /* the interface is now configured for not accept_ra, or accept_ra_dfl */
-            if !self.debug.allow_router_advertisement {
-                println!("turning off router advertisements");
+            if !mydebug.allow_router_advertisement {
+                mydebug.debug_info(format!("turning off router advertisements"));
                 let acceptra = format!("net.ipv6.conf.{}.accept_ra", name);
 
                 let ctl = sysctl::Ctl::new(&acceptra).expect(&format!("could not create sysctl '{}'", acceptra));
@@ -259,10 +261,11 @@ impl DullData {
     }
 
     pub async fn store_addr_info(self: &mut DullData, am: AddressMessage) -> Option<Arc<Mutex<DullInterface>>> {
-
+        let mut mydebug = self.debug.clone();
         let lh = am.header;
         let ifindex = lh.index;
-        println!("ifindex: {} family: {}", ifindex, lh.family);
+
+        mydebug.debug_info(format!("ifindex: {} family: {}", ifindex, lh.family));
 
         let     ifna = self.get_entry_by_ifindex(ifindex).await;
         let mut ifn  = ifna.lock().await;
@@ -287,20 +290,20 @@ impl DullData {
                         continue;
                     }
                     ifn.linklocal6 = llv6;
-                    print!("llv6: {}", ifn.linklocal6);
+                    mydebug.debug_info(format!("llv6: {}", ifn.linklocal6));
                 },
                 Nla::CacheInfo(_info) => { /* nothing */},
                 Nla::Flags(_info)     => { /* nothing */},
                 _ => {
-                    print!("data: {:?} ", nlas);
+                    mydebug.debug_info(format!("data: {:?} ", nlas));
                 }
             }
         }
-        println!("");
+        mydebug.debug_info(format!(""));
 
         /* do nothing for ACP named interfaces */
         if ifn.is_acp {
-            println!("ignoring acp interface[{}]: {}", ifn.ifindex, ifn.ifname);
+            mydebug.debug_info(format!("ignoring acp interface[{}]: {}", ifn.ifindex, ifn.ifname));
             return None;
         }
 
@@ -318,16 +321,17 @@ impl DullData {
 async fn gather_link_info(ldull: &Arc<Mutex<DullChild>>, lm: LinkMessage) -> Result<(), Error> {
     let dull     = ldull.lock().await;
     let mut data = dull.data.lock().await;
+    let mut mydebug = data.debug.clone();
 
     data.cmd_cnt += 1;
-    println!("\ncommand {}", data.cmd_cnt);
+    mydebug.debug_info(format!("\ncommand {}", data.cmd_cnt));
 
     let ifindex = lm.header.index;
-    println!("ifindex: {:?} ", ifindex);
+    mydebug.debug_info(format!("ifindex: {:?} ", ifindex));
 
     data.store_link_info(lm, ifindex).await;
 
-    if data.debug.debug_namespaces {
+    if mydebug.debug_namespaces {
         Command::new("ip")
             .arg("link")
             .arg("ls")
@@ -342,9 +346,10 @@ async fn gather_link_info(ldull: &Arc<Mutex<DullChild>>, lm: LinkMessage) -> Res
 async fn gather_addr_info(ldull: &Arc<Mutex<DullChild>>, am: AddressMessage) -> Result<Option<Arc<Mutex<DullInterface>>>, Error> {
     let dull     = ldull.lock().await;
     let mut data = dull.data.lock().await;
+    let mut mydebug = data.debug.clone();
 
     data.cmd_cnt += 1;
-    println!("\ncommand {}", data.cmd_cnt);
+    mydebug.debug_info(format!("\ncommand {}", data.cmd_cnt));
     Ok(data.store_addr_info(am).await)
 }
 
@@ -405,12 +410,13 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
 
         child_lo_up(&handle).await;
 
-        {
+        let mut debug = {
             let  mychild = child.lock().await;
 
             let mut data = mychild.data.lock().await;
             data.handle  = Some(handle);
-        }
+            data.debug.clone()
+        };
 
         while let Some((message, _)) = messages.next().await {
             let payload = message.payload;
@@ -456,7 +462,7 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
                     /* just ignore these! */
                 }
                 //_ => { println!("generic message type: {} skipped", payload.message_type()); }
-                _ => { println!("msg type: {:?}", payload); }
+                _ => { debug.debug_info(format!("msg type: {:?}", payload)); }
             }
         };
         Ok(())
