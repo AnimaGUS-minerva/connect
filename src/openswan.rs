@@ -147,6 +147,13 @@ impl OpenswanWhackInterface {
         OpenswanWhackInterface::openswan_send_cmd(
             OpenswanWhackInterface::openswan_encode_linkandlisten()).await.unwrap();
 
+        // 3. do it twice, because sometimes we get:
+        //   bind() for dull004/dull004 [fe80::609c:62ff:fed8:abba%92]:500 in process_raw_ifaces(). Errno 99: Cannot assign requested address
+        // and we have no idea why.
+        delay_for(Duration::from_millis(100)).await;
+        OpenswanWhackInterface::openswan_send_cmd(
+            OpenswanWhackInterface::openswan_encode_linkandlisten()).await.unwrap();
+
         Ok(())
     }
 
