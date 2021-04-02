@@ -24,11 +24,12 @@ use std::fmt;
 use futures::stream::TryStreamExt;
 use futures::lock::{Mutex};
 use netlink_packet_sock_diag::constants::IPPROTO_UDP;
-use tokio::process::Command;
+//use tokio::process::Command;
 
 use crate::dull::DullInterface;
 use crate::grasp;
 use crate::vtitun;
+use crate::openswan::OpenswanWhackInterface;
 
 #[derive(Debug)]
 pub struct Adjacency {
@@ -167,15 +168,13 @@ impl Adjacency {
             ifn.linklocal6
         };
 
-        let vtinum = format!("{}", self.vti_number.unwrap());
+        let vtinum     = self.vti_number.unwrap();
+        let _vtinum_str = format!("{}", vtinum);
 
-        // but for now, run a script to do it manually.
-        let _command = Command::new("/root/tunnel")
-            .arg(self.vti_iface.to_string())
-            .arg(vtinum)
-            .arg(myll6addr.to_string())
-            .arg(self.v6addr.to_string())
-            .spawn().unwrap().await.unwrap();
+        OpenswanWhackInterface::add_adjacency(&self.vti_iface,
+                                              vtinum as u32,
+                                              myll6addr,
+                                              self.v6addr).await.unwrap();
         Ok(())
     }
 
