@@ -176,24 +176,25 @@ impl OpenswanWhackInterface {
                                                            CborType::Bytes(oct.to_vec())])));
     }
 
+    pub fn encode_end_policy(v6: Ipv6Addr) -> CborType {
+        let mut end_map: BTreeMap<CborType, CborType> = BTreeMap::new();
+        end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_HOST_ADDR as u64),
+                        OpenswanWhackInterface::encode_v6_addr(v6));
+        end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CLIENT as u64),
+                        OpenswanWhackInterface::encode_v6_prefix(Ipv6Addr::UNSPECIFIED, 0));
+        end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HOST_PORT  as u64),
+                        CborType::Integer(500));
+        end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HAS_CLIENT as u64),
+                        CborType::Integer(1));
+
+        CborType::Map(end_map)
+    }
+
     pub fn encode_ll_policy(myllv6:    Ipv6Addr,
                             eyllv6:    Ipv6Addr) -> Vec<u8> {
 
-        let mut left_map: BTreeMap<CborType, CborType> = BTreeMap::new();
-        left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_HOST_ADDR as u64),
-                        OpenswanWhackInterface::encode_v6_addr(myllv6));
-        left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CLIENT as u64),
-                        OpenswanWhackInterface::encode_v6_prefix(Ipv6Addr::UNSPECIFIED, 0));
-        left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HAS_CLIENT as u64),
-                        CborType::Integer(1));
-
-        let mut right_map: BTreeMap<CborType, CborType> = BTreeMap::new();
-        right_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_HOST_ADDR as u64),
-                         OpenswanWhackInterface::encode_v6_addr(eyllv6));
-        right_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CLIENT as u64),
-                         OpenswanWhackInterface::encode_v6_prefix(Ipv6Addr::UNSPECIFIED, 0));
-        right_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HAS_CLIENT as u64),
-                         CborType::Integer(1));
+        let left_map = OpenswanWhackInterface::encode_end_policy(myllv6);
+        let right_map= OpenswanWhackInterface::encode_end_policy(eyllv6);
 
         let mut connection_map: BTreeMap<CborType, CborType> = BTreeMap::new();
         let octets = eyllv6.octets();
@@ -203,10 +204,10 @@ impl OpenswanWhackInterface {
                                                        octets[12],octets[13],octets[14], octets[15])));
 
         connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_LEFT as u64),
-                              CborType::Map(left_map));
+                              left_map);
 
         connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_RIGHT as u64),
-                              CborType::Map(right_map));
+                              right_map);
 
         // IKE policy.  Not well expressed in CDDL yet.
         // comes from "enum pluto_policy" in pluto_constants.h:
@@ -324,7 +325,7 @@ a1                                      # map(1)
       75                                # text(21)
          706565722d35383335303266666665313638383562
       03                                # unsigned(3)
-      a3                                # map(3)
+      a4                                # map(4)
          0b                             # unsigned(11)
          d9 0105                        # tag(261)
             50                          # bytes(16)
@@ -337,8 +338,10 @@ a1                                      # map(1)
                   00000000000000000000000000000000
          11                             # unsigned(17)
          01                             # unsigned(1)
+         14                             # unsigned(20)
+         19 01f4                        # unsigned(500)
       04                                # unsigned(4)
-      a3                                # map(3)
+      a4                                # map(4)
          0b                             # unsigned(11)
          d9 0105                        # tag(261)
             50                          # bytes(16)
@@ -351,12 +354,15 @@ a1                                      # map(1)
                   00000000000000000000000000000000
          11                             # unsigned(17)
          01                             # unsigned(1)
+         14                             # unsigned(20)
+         19 01f4                        # unsigned(500)
       18 7f                             # unsigned(127)
       1a 0601006e                       # unsigned(100728942)
       18 92                             # unsigned(146)
       19 3840                           # unsigned(14400)
       18 93                             # unsigned(147)
       1a 00015180                       # unsigned(86400)
+
 "));
     }
 
