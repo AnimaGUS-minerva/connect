@@ -208,6 +208,20 @@ impl OpenswanWhackInterface {
         connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_RIGHT as u64),
                               CborType::Map(right_map));
 
+        // IKE policy.  Not well expressed in CDDL yet.
+        // comes from "enum pluto_policy" in pluto_constants.h:
+	//     POLICY_RSASIG  = LELEM(1),
+        //     POLICY_ENCRYPT = LELEM(2),	/* must be first of IPSEC policies */
+	//     POLICY_AUTHENTICATE=LELEM(3),	/* must be second */
+	//     POLICY_TUNNEL  = LELEM(5),
+	//     POLICY_PFS     = LELEM(6),
+	//     POLICY_UP      = LELEM(16),   /* do we want this up? */
+	//     POLICY_IKEV2_ALLOW   = LELEM(25), /* accept IKEv2?   0x0200 0000 */
+	//     POLICY_IKEV2_PROPOSE = LELEM(26), /* propose IKEv2?  0x0400 0000 */
+        let policy: u64 = (1<<1) | (1<<2) | (1<<3) | (1<<5) | (1<<6) | (1<<16) | (1<<25) | (1<<26);
+        connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_POLICY as u64),
+                              CborType::Integer(policy));
+
         connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_LIFETIME_IKE as u64),
                               CborType::Integer(14400));  // IKE lifetime, 4 hoursj
 
@@ -305,7 +319,7 @@ A1                                      # map(1)
         assert_eq!(encoded_policy, hex!("
 a1                                      # map(1)
    04                                   # unsigned(4)
-   a5                                   # map(5)
+   a6                                   # map(6)
       01                                # unsigned(1)
       75                                # text(21)
          706565722d35383335303266666665313638383562
@@ -337,6 +351,8 @@ a1                                      # map(1)
                   00000000000000000000000000000000
          11                             # unsigned(17)
          01                             # unsigned(1)
+      18 7f                             # unsigned(127)
+      1a 0601006e                       # unsigned(100728942)
       18 92                             # unsigned(146)
       19 3840                           # unsigned(14400)
       18 93                             # unsigned(147)
