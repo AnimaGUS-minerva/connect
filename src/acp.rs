@@ -137,6 +137,7 @@ impl AcpData {
 
     pub async fn store_link_info(self: &mut AcpData, lm: LinkMessage, ifindex: IfIndex) {
 
+        let mut mydebug = self.debug.clone();
         let results = {
             let     ifna = self.get_entry_by_ifindex(ifindex).await;
             let mut ifn  = ifna.lock().await;
@@ -145,22 +146,22 @@ impl AcpData {
                 use netlink_packet_route::link::nlas::Nla;
                 match nlas {
                     Nla::IfName(name) => {
-                        println!("ifname: {}", name);
+                        mydebug.debug_info(format!("ifname: {}", name));
                         if name.len() > 3 && name[0..4] == "acp_".to_string() {
                             ifn.is_acp = true;
                         }
                         ifn.ifname = name;
                     },
                     Nla::Mtu(bytes) => {
-                        println!("mtu: {}", bytes);
+                        mydebug.debug_info(format!("mtu: {}", bytes));
                         ifn.mtu = bytes;
                     },
                     Nla::Address(addrset) => {
-                        println!("lladdr: {:0x}:{:0x}:{:0x}:{:0x}:{:0x}:{:0x}", addrset[0], addrset[1], addrset[2], addrset[3], addrset[4], addrset[5]);
+                        mydebug.debug_info(format!("lladdr: {:0x}:{:0x}:{:0x}:{:0x}:{:0x}:{:0x}", addrset[0], addrset[1], addrset[2], addrset[3], addrset[4], addrset[5]));
                     },
                     Nla::OperState(state) => {
                         if state == State::Up {
-                            println!("device is up");
+                            mydebug.debug_info(format!("device is up"));
                         }
                         ifn.oper_state = state;
                     },
@@ -169,7 +170,7 @@ impl AcpData {
                             match ip {
                                 AfSpecInet::Inet(_v4) => { },
                                 AfSpecInet::Inet6(_v6) => {
-                                    //println!("v6: {:?}", v6);
+                                    //mydebug.debug_info(format!("v6: {:?}", v6));
                                 }
                                 _ => {}
                             }
@@ -180,12 +181,12 @@ impl AcpData {
                     }
                 }
             }
-            println!("");
+            mydebug.debug_info(format!(""));
             (ifn.oper_state == State::Down, ifn.ifindex.clone(), ifn.ifname.clone(), ifn.is_acp)
         };
 
         if results.3 && results.0 {  /* results.3== is_acp, results.0== Down */
-            println!("bringing interface {} up", results.2);
+            mydebug.debug_info(format!("bringing interface {} up", results.2));
 
             let handle = self.handle.as_ref().unwrap();
 
@@ -201,9 +202,10 @@ impl AcpData {
 
     pub async fn store_addr_info(self: &mut AcpData, am: AddressMessage) -> Option<Arc<Mutex<AcpInterface>>> {
 
+        let mut mydebug = self.debug.clone();
         let lh = am.header;
         let ifindex = lh.index;
-        println!("ifindex: {} family: {}", ifindex, lh.family);
+        //println!("ifindex: {} family: {}", ifindex, lh.family);
 
         let     ifna = self.get_entry_by_ifindex(ifindex).await;
         let mut ifn  = ifna.lock().await;
@@ -231,7 +233,7 @@ impl AcpData {
                         continue;
                     }
                     ifn.linklocal6 = llv6;
-                    print!("llv6: {}", ifn.linklocal6);
+                    mydebug.debug_info(format!("llv6: {}", ifn.linklocal6));
                 },
                 Nla::CacheInfo(_info) => { /* nothing */},
                 Nla::Flags(_info)     => { /* nothing */},
@@ -260,11 +262,13 @@ async fn gather_link_info(lacp: &Arc<Mutex<AcpChild>>, lm: LinkMessage) -> Resul
     let acp      = lacp.lock().await;
     let mut data = acp.data.lock().await;
 
+    let mut mydebug = data.debug.clone();
+
     data.cmd_cnt += 1;
-    println!("\ncommand {}", data.cmd_cnt);
+    mydebug.debug_info(format!("\ncommand {}", data.cmd_cnt));
 
     let ifindex = lm.header.index;
-    println!("ifindex: {:?} ", ifindex);
+    mydebug.debug_info(format!("\nifindex: {:?} ", ifindex));
 
     data.store_link_info(lm, ifindex).await;
 
@@ -284,7 +288,9 @@ async fn gather_addr_info(lacp: &Arc<Mutex<AcpChild>>, am: AddressMessage) -> Re
     let mut data = acp.data.lock().await;
 
     data.cmd_cnt += 1;
-    println!("\ncommand {}", data.cmd_cnt);
+    let mut mydebug = data.debug.clone();
+    mydebug.debug_info(format!("\ncommand {}", data.cmd_cnt));
+
     Ok(data.store_addr_info(am).await)
 }
 
