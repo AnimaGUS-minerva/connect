@@ -140,6 +140,29 @@ impl GraspDaemon {
             let results = recv.recv_from(&mut bufbytes).await;
             match results {
                 Ok((size, addr)) => {
+
+                    // need to check to see if this might be an echo from self, so have to check
+                    // through the linklocal6 for all our interfaces.
+                    match addr {
+                        SocketAddr::V6(addr6) => {
+                            let v6origin = addr6.ip();
+                            let dcl  = dd.lock().await;
+                            let data = dcl.data.lock().await;
+                            for (k,ldi) in &data.interfaces {
+                                let di = ldi.lock().await;
+                                if di.linklocal6 == *v6origin {
+                                    if debug_graspdaemon {
+                                        println!("ignoring announcement from self ({}: {})", k, addr);
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+                        SocketAddr::V4(_addr4) => { // not IPv6, so
+                            continue;
+                        }
+                    }
+
                     if debug_graspdaemon {
                         println!("{}: grasp daemon read: {} bytes from {}", cnt, size, addr);
                     }
