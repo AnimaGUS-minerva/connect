@@ -208,6 +208,12 @@ impl OpenswanWhackInterface {
         connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_RIGHT as u64),
                               CborType::Map(right_map));
 
+        connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_LIFETIME_IKE as u64),
+                              CborType::Integer(14400));  // IKE lifetime, 4 hoursj
+
+        connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_LIFETIME_IPSEC as u64),
+                              CborType::Integer(86400));  // IPsec lifetime, 1 day
+
         //  WHACK_OPT_IKE=>  tstr,
         //  WHACK_OPT_ESP=>  tstr,
 
@@ -297,20 +303,20 @@ A1                                      # map(1)
 
         let encoded_policy = OpenswanWhackInterface::encode_ll_policy(myllv6, eyllv6);
         assert_eq!(encoded_policy, hex!("
-A1                                      # map(1)
+a1                                      # map(1)
    04                                   # unsigned(4)
-   A3                                   # map(3)
+   a5                                   # map(5)
       01                                # unsigned(1)
       75                                # text(21)
-         706565722D35383335303266666665313638383562
+         706565722d35383335303266666665313638383562
       03                                # unsigned(3)
-      A3                                # map(3)
-         0B                             # unsigned(11)
-         D9 0105                        # tag(261)
+      a3                                # map(3)
+         0b                             # unsigned(11)
+         d9 0105                        # tag(261)
             50                          # bytes(16)
-               FE80000000000000609C62FFFED8ABBA
-         0E                             # unsigned(14)
-         D9 0105                        # tag(261)
+               fe80000000000000609c62fffed8abba
+         0e                             # unsigned(14)
+         d9 0105                        # tag(261)
             82                          # array(2)
                00                       # unsigned(0)
                50                       # bytes(16)
@@ -318,19 +324,23 @@ A1                                      # map(1)
          11                             # unsigned(17)
          01                             # unsigned(1)
       04                                # unsigned(4)
-      A3                                # map(3)
-         0B                             # unsigned(11)
-         D9 0105                        # tag(261)
+      a3                                # map(3)
+         0b                             # unsigned(11)
+         d9 0105                        # tag(261)
             50                          # bytes(16)
-               FE80000000000000583502FFFE16885B
-         0E                             # unsigned(14)
-         D9 0105                        # tag(261)
+               fe80000000000000583502fffe16885b
+         0e                             # unsigned(14)
+         d9 0105                        # tag(261)
             82                          # array(2)
                00                       # unsigned(0)
                50                       # bytes(16)
                   00000000000000000000000000000000
          11                             # unsigned(17)
          01                             # unsigned(1)
+      18 92                             # unsigned(146)
+      19 3840                           # unsigned(14400)
+      18 93                             # unsigned(147)
+      1a 00015180                       # unsigned(86400)
 "));
     }
 
