@@ -161,15 +161,17 @@ impl Adjacency {
             return Ok(());
         }
 
-        println!("adding adjancency on {} for {}", self.ifindex, self.v6addr);
-
         let myll6addr = {
             let ifn = self.interface.lock().await;
             ifn.linklocal6
         };
 
         let vtinum     = self.vti_number.unwrap();
-        let _vtinum_str = format!("{}", vtinum);
+        let vtinum_str = format!("{}", vtinum);
+
+        println!("index: {} adding (adv:{}) for {} (vtinum: {})", self.ifindex,
+                 self.advertisement_count,
+                 self.v6addr, vtinum_str);
 
         OpenswanWhackInterface::add_adjacency(&self.vti_iface,
                                               vtinum as u32,
