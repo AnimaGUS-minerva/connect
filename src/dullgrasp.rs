@@ -128,10 +128,10 @@ impl GraspDaemon {
         loop {
             let mut bufbytes = [0u8; 2048];
 
-            let myll6addr = {
+            let (myll6addr,myifindex) = {
                 let gdl = gd.lock().await;
                 let ifn = gdl.dullif.lock().await;
-                ifn.linklocal6
+                (ifn.linklocal6,ifn.ifindex)
             };
 
             if debug_graspdaemon {
@@ -146,13 +146,23 @@ impl GraspDaemon {
                     match addr {
                         SocketAddr::V6(addr6) => {
                             let v6origin = addr6.ip();
+                            if addr6.scope_id() != myifindex {
+                                if debug_graspdaemon {
+                                    println!("GD: ignoring message from different ifindex: {} vs {}",
+                                             addr6.scope_id(), myifindex);
+                                }
+                                continue;
+                            }
+
+                            // search list of interfaces now
                             let dcl  = dd.lock().await;
                             let data = dcl.data.lock().await;
+
                             for (k,ldi) in &data.interfaces {
                                 let di = ldi.lock().await;
                                 if di.linklocal6 == *v6origin {
                                     if debug_graspdaemon {
-                                        println!("ignoring announcement from self ({}: {})", k, addr);
+                                        println!("GD: ignoring announcement from self ({}: {})", k, addr);
                                     }
                                     continue;
                                 }
