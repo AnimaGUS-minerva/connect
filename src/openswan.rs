@@ -47,6 +47,7 @@ const CBOR_SIGNATURE_TAG:      u64  = 55799;
 const CBOR_OPENSWAN_TAG:       u64  = 0x4f50534e;
 //const CborIPv4Tag:           u64  = 260;            /* squatted */
 const CBOR_IPV6_TAG:           u64  = 261;
+const PUBKEY_CERTIFICATE:      u64  =   3;    /* from enum pubkey_source */
 
 impl OpenswanWhackInterface {
     pub async fn connect() -> Result<OpenswanWhackInterface, std::io::Error> {
@@ -176,7 +177,7 @@ impl OpenswanWhackInterface {
                                                            CborType::Bytes(oct.to_vec())])));
     }
 
-    pub fn encode_end_policy(v6: Ipv6Addr) -> CborType {
+    pub fn encode_end_policy(v6: Ipv6Addr) -> BTreeMap<CborType, CborType> {
         let mut end_map: BTreeMap<CborType, CborType> = BTreeMap::new();
         end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_HOST_ADDR as u64),
                         OpenswanWhackInterface::encode_v6_addr(v6));
@@ -187,14 +188,28 @@ impl OpenswanWhackInterface {
         end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HAS_CLIENT as u64),
                         CborType::Integer(1));
 
-        CborType::Map(end_map)
+        end_map
     }
 
     pub fn encode_ll_policy(myllv6:    Ipv6Addr,
                             eyllv6:    Ipv6Addr) -> Vec<u8> {
 
-        let left_map = OpenswanWhackInterface::encode_end_policy(myllv6);
-        let right_map= OpenswanWhackInterface::encode_end_policy(eyllv6);
+        let mut left_map = OpenswanWhackInterface::encode_end_policy(myllv6);
+
+        left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_KEYTYPE as u64),
+                        CborType::Integer(PUBKEY_CERTIFICATE));
+        left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_ID as u64),
+                        CborType::String("%cert".to_string()));
+
+        left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CERT as u64),
+                        CborType::String("hostcert.pem".to_string()));
+
+        let left_cbor = CborType::Map(left_map);
+        let mut right_map= OpenswanWhackInterface::encode_end_policy(eyllv6);
+        right_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CA as u64),
+                         CborType::String("ownerca_3072.crt".to_string()));
+
+        let right_cbor = CborType::Map(right_map);
 
         let mut connection_map: BTreeMap<CborType, CborType> = BTreeMap::new();
         let octets = eyllv6.octets();
@@ -204,10 +219,10 @@ impl OpenswanWhackInterface {
                                                        octets[12],octets[13],octets[14], octets[15])));
 
         connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_LEFT as u64),
-                              left_map);
+                              left_cbor);
 
         connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_RIGHT as u64),
-                              right_map);
+                              right_cbor);
 
         // IKE policy.  Not well expressed in CDDL yet.
         // comes from "enum pluto_policy" in pluto_constants.h:
@@ -325,7 +340,13 @@ a1                                      # map(1)
       75                                # text(21)
          706565722d35383335303266666665313638383562
       03                                # unsigned(3)
-      a4                                # map(4)
+      a7                                # map(7)
+         05                             # unsigned(5)
+         65                             # text(5)
+            2563657274                  # %cert
+         06                             # unsigned(6)
+         6c                             # text(12)
+            686f7374636572742e70656d    # hostcert.pem
          0b                             # unsigned(11)
          d9 0105                        # tag(261)
             50                          # bytes(16)
@@ -336,12 +357,17 @@ a1                                      # map(1)
                00                       # unsigned(0)
                50                       # bytes(16)
                   00000000000000000000000000000000
+         10                             # unsigned(16)
+         03                             # unsigned(3)
          11                             # unsigned(17)
          01                             # unsigned(1)
          14                             # unsigned(20)
          19 01f4                        # unsigned(500)
       04                                # unsigned(4)
-      a4                                # map(4)
+      a5                                # map(5)
+         07                             # unsigned(7)
+         70                             # text(16)
+            6f776e657263615f333037322e637274 # ownerca_3072.crt
          0b                             # unsigned(11)
          d9 0105                        # tag(261)
             50                          # bytes(16)
@@ -362,7 +388,6 @@ a1                                      # map(1)
       19 3840                           # unsigned(14400)
       18 93                             # unsigned(147)
       1a 00015180                       # unsigned(86400)
-
 "));
     }
 

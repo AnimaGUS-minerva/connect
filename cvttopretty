@@ -1,0 +1,3 @@
+#!/bin/sh
+
+dec2hex </tmp/k45 | pretty2cbor.rb| cbor2pretty.rb >|/tmp/k45b
