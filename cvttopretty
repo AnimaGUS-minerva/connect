@@ -1,3 +1,3 @@
 #!/bin/sh
 
-dec2hex </tmp/k45 | pretty2cbor.rb| cbor2pretty.rb >|/tmp/k45b
+dec2hex </tmp/k45 | pretty2cbor.rb| cbor2pretty.rb | sed -e 's/".*//' >|/tmp/k45b

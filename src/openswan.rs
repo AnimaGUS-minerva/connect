@@ -204,6 +204,12 @@ impl OpenswanWhackInterface {
         left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CERT as u64),
                         CborType::String("hostcert.pem".to_string()));
 
+        left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HOST_TYPE as u64),
+                        CborType::Integer(255));  /* enum keyword_host == KH_IPADDR */
+
+        left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_CERTPOLICY as u64),
+                        CborType::Integer(3));    /* enum certpolicy == cert_alwayssend */
+
         let left_cbor = CborType::Map(left_map);
         let mut right_map= OpenswanWhackInterface::encode_end_policy(eyllv6);
         right_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CA as u64),
@@ -340,7 +346,7 @@ a1                                      # map(1)
       75                                # text(21)
          706565722d35383335303266666665313638383562
       03                                # unsigned(3)
-      a7                                # map(7)
+      a9                                # map(9)
          05                             # unsigned(5)
          65                             # text(5)
             2563657274                  # %cert
@@ -357,17 +363,21 @@ a1                                      # map(1)
                00                       # unsigned(0)
                50                       # bytes(16)
                   00000000000000000000000000000000
+         0f                             # unsigned(15)
+         18 ff                          # unsigned(255)
          10                             # unsigned(16)
          03                             # unsigned(3)
          11                             # unsigned(17)
          01                             # unsigned(1)
          14                             # unsigned(20)
          19 01f4                        # unsigned(500)
+         18 8f                          # unsigned(143)
+         03                             # unsigned(3)
       04                                # unsigned(4)
       a5                                # map(5)
          07                             # unsigned(7)
          70                             # text(16)
-            6f776e657263615f333037322e637274 # ownerca_3072.crt
+            6f776e657263615f333037322e637274
          0b                             # unsigned(11)
          d9 0105                        # tag(261)
             50                          # bytes(16)
@@ -388,6 +398,7 @@ a1                                      # map(1)
       19 3840                           # unsigned(14400)
       18 93                             # unsigned(147)
       1a 00015180                       # unsigned(86400)
+
 "));
     }
 
