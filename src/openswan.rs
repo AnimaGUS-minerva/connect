@@ -195,26 +195,23 @@ impl OpenswanWhackInterface {
                             eyllv6:    Ipv6Addr) -> Vec<u8> {
 
         let mut left_map = OpenswanWhackInterface::encode_end_policy(myllv6);
-
         left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_KEYTYPE as u64),
                         CborType::Integer(PUBKEY_CERTIFICATE));
         left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_ID as u64),
                         CborType::String("%cert".to_string()));
-
         left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CERT as u64),
                         CborType::String("hostcert.pem".to_string()));
-
         left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HOST_TYPE as u64),
                         CborType::Integer(255));  /* enum keyword_host == KH_IPADDR */
-
         left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_CERTPOLICY as u64),
                         CborType::Integer(3));    /* enum certpolicy == cert_alwayssend */
-
         let left_cbor = CborType::Map(left_map);
+
         let mut right_map= OpenswanWhackInterface::encode_end_policy(eyllv6);
         right_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CA as u64),
                          CborType::String("ownerca_3072.crt".to_string()));
-
+        right_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HOST_TYPE as u64),
+                         CborType::Integer(2));   /* enum keyword_host == KH_ANY */
         let right_cbor = CborType::Map(right_map);
 
         let mut connection_map: BTreeMap<CborType, CborType> = BTreeMap::new();
@@ -344,25 +341,25 @@ a1                                      # map(1)
    a6                                   # map(6)
       01                                # unsigned(1)
       75                                # text(21)
-         706565722d35383335303266666665313638383562
+         706565722d35383335303266666665313638383562 #
       03                                # unsigned(3)
       a9                                # map(9)
          05                             # unsigned(5)
          65                             # text(5)
-            2563657274                  # %cert
+            2563657274                  #
          06                             # unsigned(6)
          6c                             # text(12)
-            686f7374636572742e70656d    # hostcert.pem
+            686f7374636572742e70656d    #
          0b                             # unsigned(11)
          d9 0105                        # tag(261)
             50                          # bytes(16)
-               fe80000000000000609c62fffed8abba
+               fe80000000000000609c62fffed8abba #
          0e                             # unsigned(14)
          d9 0105                        # tag(261)
             82                          # array(2)
                00                       # unsigned(0)
                50                       # bytes(16)
-                  00000000000000000000000000000000
+                  00000000000000000000000000000000 #
          0f                             # unsigned(15)
          18 ff                          # unsigned(255)
          10                             # unsigned(16)
@@ -374,20 +371,22 @@ a1                                      # map(1)
          18 8f                          # unsigned(143)
          03                             # unsigned(3)
       04                                # unsigned(4)
-      a5                                # map(5)
+      a6                                # map(6)
          07                             # unsigned(7)
          70                             # text(16)
-            6f776e657263615f333037322e637274
+            6f776e657263615f333037322e637274 #
          0b                             # unsigned(11)
          d9 0105                        # tag(261)
             50                          # bytes(16)
-               fe80000000000000583502fffe16885b
+               fe80000000000000583502fffe16885b #
          0e                             # unsigned(14)
          d9 0105                        # tag(261)
             82                          # array(2)
                00                       # unsigned(0)
                50                       # bytes(16)
-                  00000000000000000000000000000000
+                  00000000000000000000000000000000 #
+         0f                             # unsigned(15)
+         02                             # unsigned(2)
          11                             # unsigned(17)
          01                             # unsigned(1)
          14                             # unsigned(20)
@@ -398,7 +397,6 @@ a1                                      # map(1)
       19 3840                           # unsigned(14400)
       18 93                             # unsigned(147)
       1a 00015180                       # unsigned(86400)
-
 "));
     }
 
