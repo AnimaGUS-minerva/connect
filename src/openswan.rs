@@ -42,11 +42,11 @@ pub struct OpenswanWhackInterface {
     pub ctrl_sock: UnixStream,
 }
 
-const OPENSWAN_CONTROL_PATH:   &str = "/run/acp.ctl";
-const CBOR_SIGNATURE_TAG:      u64  = 55799;
+const OPENSWAN_CONTROL_PATH:   &str = "/run/acp/pluto.ctl";
+const CBOR_SIGNATURE_TAG:      u64  = 55800;
 const CBOR_OPENSWAN_TAG:       u64  = 0x4f50534e;
-//const CborIPv4Tag:           u64  = 260;            /* squatted */
-const CBOR_IPV6_TAG:           u64  = 261;
+//const CborIPv4Tag:           u64  = 0x34;            /* IANA assigned! */
+const CBOR_IPV6_TAG:           u64  = 0x36;
 const PUBKEY_CERTIFICATE:      u64  =   3;    /* from enum pubkey_source */
 
 impl OpenswanWhackInterface {
@@ -125,7 +125,7 @@ impl OpenswanWhackInterface {
 
         let result = Command::new("/usr/local/libexec/ipsec/pluto")
             .arg("--ctlbase")
-            .arg("/run/acp")    // .ctl is implied
+            .arg("/run/acp/pluto")    // .ctl is implied
             .arg("--stderrlog")
             .arg("--use-netkey")
             .arg("--nhelpers")
@@ -199,6 +199,8 @@ impl OpenswanWhackInterface {
                         CborType::Integer(PUBKEY_CERTIFICATE));
         left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_ID as u64),
                         CborType::String("%cert".to_string()));
+        left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CA as u64),
+                        CborType::String("DC=ca/DC=sandelman/CN=fountain-test.example.com Unstrung Fountain Root CA".to_string()));
         left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CERT as u64),
                         CborType::String("hostcert.pem".to_string()));
         left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HOST_TYPE as u64),
@@ -208,8 +210,10 @@ impl OpenswanWhackInterface {
         let left_cbor = CborType::Map(left_map);
 
         let mut right_map= OpenswanWhackInterface::encode_end_policy(eyllv6);
+        right_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_ID as u64),
+                         CborType::String("%cert".to_string()));
         right_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CA as u64),
-                         CborType::String("ownerca_3072.crt".to_string()));
+                         CborType::String("DC=ca/DC=sandelman/CN=fountain-test.example.com Unstrung Fountain Root CA".to_string()));
         right_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HOST_TYPE as u64),
                          CborType::Integer(2));   /* enum keyword_host == KH_ANY */
         let right_cbor = CborType::Map(right_map);
@@ -289,14 +293,14 @@ mod tests {
     #[test]
     fn test_openswan_tag() {
         let bytes = OpenswanWhackInterface::openswan_tag();
-        assert_eq!(bytes, vec![0xd9,0xd9,0xf7,0xda,0x4f,0x50,0x53,0x4e,0x43,0x42,0x4f,0x52])
+        assert_eq!(bytes, vec![0xd9,0xd9,0xf8,0xda,0x4f,0x50,0x53,0x4e,0x43,0x42,0x4f,0x52])
     }
 
     // this is here, because you can not test macros in the same crate
     #[test]
     fn test_hex_parsing() {
-        let f1 = vec![0xd9,0xd9,0xf7,0xda,0x4f,0x50,0x53,0x4e,0x43,0x42,0x4f,0x52];
-        let f2 = hex!("d9 d9 f7 da 4f 50 53 4e 43 42 4f 52");
+        let f1 = vec![0xd9,0xd9,0xf8,0xda,0x4f,0x50,0x53,0x4e,0x43,0x42,0x4f,0x52];
+        let f2 = hex!("d9 d9 f8 da 4f 50 53 4e 43 42 4f 52");
         assert_eq!(f1, f2);
     }
 
@@ -324,7 +328,7 @@ A1                                      # map(1)
    04                                   # unsigned(4)
    A3                                   # map(3)
       01                                # unsigned(1)
-        78 18                             # text(24)
+        78 18                           # text(24)
 ");
         assert_eq!(f1, f2);
     }
@@ -343,19 +347,22 @@ a1                                      # map(1)
       75                                # text(21)
          706565722d35383335303266666665313638383562 #
       03                                # unsigned(3)
-      a9                                # map(9)
+      aa                                # map(10)
          05                             # unsigned(5)
          65                             # text(5)
             2563657274                  #
          06                             # unsigned(6)
          6c                             # text(12)
             686f7374636572742e70656d    #
+         07                             # unsigned(7)
+         78 49                          # text(73)
+            44433d63612f44433d73616e64656c6d616e2f434e3d666f756e7461696e2d746573742e6578616d706c652e636f6d20556e737472756e6720466f756e7461696e20526f6f74204341 #
          0b                             # unsigned(11)
-         d9 0105                        # tag(261)
+         d8 36                          # tag(54)
             50                          # bytes(16)
                fe80000000000000609c62fffed8abba #
          0e                             # unsigned(14)
-         d9 0105                        # tag(261)
+         d8 36                          # tag(54)
             82                          # array(2)
                00                       # unsigned(0)
                50                       # bytes(16)
@@ -371,16 +378,19 @@ a1                                      # map(1)
          18 8f                          # unsigned(143)
          03                             # unsigned(3)
       04                                # unsigned(4)
-      a6                                # map(6)
+      a7                                # map(7)
+         05                             # unsigned(5)
+         63                             # text(3)
+            453d2a                      #
          07                             # unsigned(7)
-         70                             # text(16)
-            6f776e657263615f333037322e637274 #
+         65                             # text(5)
+            2573616d65                  #
          0b                             # unsigned(11)
-         d9 0105                        # tag(261)
+         d8 36                          # tag(54)
             50                          # bytes(16)
                fe80000000000000583502fffe16885b #
          0e                             # unsigned(14)
-         d9 0105                        # tag(261)
+         d8 36                          # tag(54)
             82                          # array(2)
                00                       # unsigned(0)
                50                       # bytes(16)
@@ -397,6 +407,7 @@ a1                                      # map(1)
       19 3840                           # unsigned(14400)
       18 93                             # unsigned(147)
       1a 00015180                       # unsigned(86400)
+
 "));
     }
 
@@ -404,7 +415,7 @@ a1                                      # map(1)
     fn test_openswan_ipv6() {
         let myllv6 = "fe80::609c:62ff:fed8:abba".parse::<Ipv6Addr>().unwrap();
         let encoded = OpenswanWhackInterface::encode_v6_addr(myllv6).serialize();
-        assert_eq!(encoded, vec![0xd9, 0x01, 0x05, 0x50,
+        assert_eq!(encoded, vec![0xd8, 0x36, 0x50,
                                  0xfe, 0x80, 0x00, 0x00,
                                  0x00, 0x00, 0x00, 0x00,
                                  0x60, 0x9C, 0x62, 0xff,
