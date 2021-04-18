@@ -18,7 +18,9 @@
 extern crate sysctl;
 
 use std::sync::Arc;
-use nix::unistd::Pid;
+use std::path::Path;
+use std::fs::File;
+use std::io::prelude::*;
 //use rtnetlink::{new_connection};
 use std::io::ErrorKind;
 use tokio::time::{delay_for, Duration};
@@ -27,8 +29,12 @@ use tokio::time::{delay_for, Duration};
 use structopt::StructOpt;
 use tokio::sync::mpsc;
 use tokio::signal;
+use nix::unistd::Pid;
 use nix::sys::signal::Signal;
 use nix::sys::signal::kill;
+use nix::unistd::mkdir;
+use nix::sys::stat;
+use nix::Error;
 
 pub mod dull;
 pub mod acp;
@@ -46,6 +52,8 @@ pub mod systemif;
 static VERSION: &str = "0.9.0";
 // static mut ARGC: isize = 0 as isize;
 // static mut ARGV: *mut *mut i8 = 0 as *mut *mut i8;
+
+static VARCONNECT: &str = "/run/acp";
 
 // rewrite with new Trait that takes Acp or Dull.
 async fn exit_child(stream: &mut tokio::net::UnixStream) {
@@ -201,17 +209,35 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
     return Ok(());
 }
 
+fn write_pid(file: &str, pid: Pid) -> Result<(), std::io::Error> {
+
+    let pidfilename = Path::new(VARCONNECT).join(file);
+    let mut file = File::create(pidfilename)?;
+    file.write(format!("{}\n", pid).as_bytes())?;
+    Ok(())
+}
+
 fn main () -> Result<(), String> {
 
     println!("Hermes Connect {}", VERSION);
 
     let args = ConnectOptions::from_args();
 
+    match mkdir(VARCONNECT, stat::Mode::S_IRWXU) {
+        Ok(_) => { },
+        Err(Error::Sys(x)) if x == nix::errno::Errno::EEXIST => { },
+        Err(x) => { println!("can not create control directory {}: {:?}",
+                             VARCONNECT, x);
+        }
+    }
+
     /* before doing any async stuff, start the ACP namespace child */
     let acp  = acp::namespace_daemon().unwrap();
+    write_pid("acp.pid", acp.dullpid).unwrap();
 
     /* before doing any async stuff, start the DULL child */
     let dull = dull::namespace_daemon().unwrap();
+    write_pid("dull.pid", dull.dullpid).unwrap();
 
     // tokio 0.2
     let brt = tokio::runtime::Builder::new()
