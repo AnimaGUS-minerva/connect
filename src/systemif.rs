@@ -377,7 +377,7 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
         }
     }
 
-    println!("processed {:>16}[{}] added={} {}", ifn.ifname, ifindex, newlink, ifn.bridge_master_str());
+    si.link_debug(format!("processed {:>16}[{}] added={} {}", ifn.ifname, ifindex, newlink, ifn.bridge_master_str()));
 
     if ifn.bridge_master {
         if let Some(childif) = ifn.ifchild {
@@ -416,7 +416,7 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>,
 
         let mut si = SystemInterfaces::empty();
 
-        println!("opening netlink socket for monitor");
+        println!("opening netlink socket for system interface monitor (debug={})", si.link_debugging);
 
         let mut nl = NetlinkInterface::new(&rt1);
 
