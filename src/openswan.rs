@@ -211,9 +211,9 @@ impl OpenswanWhackInterface {
 
         let mut right_map= OpenswanWhackInterface::encode_end_policy(eyllv6);
         right_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_ID as u64),
-                         CborType::String("%cert".to_string()));
+                         CborType::String("E=*".to_string()));
         right_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CA as u64),
-                         CborType::String("DC=ca/DC=sandelman/CN=fountain-test.example.com Unstrung Fountain Root CA".to_string()));
+                         CborType::String("%same".to_string()));
         right_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HOST_TYPE as u64),
                          CborType::Integer(2));   /* enum keyword_host == KH_ANY */
         let right_cbor = CborType::Map(right_map);
