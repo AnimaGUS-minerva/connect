@@ -192,7 +192,8 @@ impl OpenswanWhackInterface {
     }
 
     pub fn encode_ll_policy(myllv6:    Ipv6Addr,
-                            eyllv6:    Ipv6Addr) -> Vec<u8> {
+                            eyllv6:    Ipv6Addr,
+                            vtinum:    u32) -> Vec<u8> {
 
         let mut left_map = OpenswanWhackInterface::encode_end_policy(myllv6);
         left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_KEYTYPE as u64),
@@ -207,6 +208,11 @@ impl OpenswanWhackInterface {
                         CborType::Integer(255));  /* enum keyword_host == KH_IPADDR */
         left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_CERTPOLICY as u64),
                         CborType::Integer(3));    /* enum certpolicy == cert_alwayssend */
+        if vtinum != 0 {
+            left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_VTINUM as u64),
+                            CborType::Integer(vtinum as u64));
+        }
+
         let left_cbor = CborType::Map(left_map);
 
         let mut right_map= OpenswanWhackInterface::encode_end_policy(eyllv6);
@@ -263,11 +269,11 @@ impl OpenswanWhackInterface {
     }
 
     pub async fn add_adjacency(_vtiiface: &String,
-                               _vtinum:    u32,
+                               vtinum:    u32,
                                myllv6:    Ipv6Addr,
                                eyllv6:    Ipv6Addr) -> Result<(), std::io::Error> {
 
-        let encoded_policy = OpenswanWhackInterface::encode_ll_policy(myllv6, eyllv6);
+        let encoded_policy = OpenswanWhackInterface::encode_ll_policy(myllv6, eyllv6, vtinum);
 
         let results = OpenswanWhackInterface::openswan_send_cmd(encoded_policy).await.unwrap();
         println!("status\n{}", results);
@@ -338,7 +344,7 @@ A1                                      # map(1)
         let myllv6 = "fe80::609c:62ff:fed8:abba".parse::<Ipv6Addr>().unwrap();
         let eyllv6 = "fe80::5835:02ff:fe16:885b".parse::<Ipv6Addr>().unwrap();
 
-        let encoded_policy = OpenswanWhackInterface::encode_ll_policy(myllv6, eyllv6);
+        let encoded_policy = OpenswanWhackInterface::encode_ll_policy(myllv6, eyllv6, 4);
         assert_eq!(encoded_policy, hex!("
 a1                                      # map(1)
    04                                   # unsigned(4)
@@ -347,7 +353,7 @@ a1                                      # map(1)
       75                                # text(21)
          706565722d35383335303266666665313638383562 #
       03                                # unsigned(3)
-      aa                                # map(10)
+      ab                                # map(11)
          05                             # unsigned(5)
          65                             # text(5)
             2563657274                  #
@@ -377,6 +383,8 @@ a1                                      # map(1)
          19 01f4                        # unsigned(500)
          18 8f                          # unsigned(143)
          03                             # unsigned(3)
+         18 91                          # unsigned(145)
+         04                             # unsigned(4)
       04                                # unsigned(4)
       a7                                # map(7)
          05                             # unsigned(5)
