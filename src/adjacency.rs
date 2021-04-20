@@ -136,7 +136,8 @@ impl Adjacency {
                 return Err(rtnetlink::Error::RequestFailed);
             }
         };
-        println!("created new ACP interface with ifindex: {}, moved to NS {}",
+        println!("created new ACP interface {} with ifindex: {}, moved to NS {}",
+                 self.vti_iface,
                  vti_link.header.index,
                  acpns);
 
