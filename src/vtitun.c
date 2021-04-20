@@ -78,13 +78,16 @@ static void init_my_tunnel(struct ip6_tnl_parm2 *p, const char *tunname,
 
         inet_pton(AF_INET6, remote, &raddr);  // parse
         memcpy(&p->raddr, &raddr, sizeof(p->raddr));
+        //p->raddr.s6_addr[15]++;  /* pick a new number */
 
         inet_pton(AF_INET6, local,  &laddr); // must exist locally
         memcpy(&p->laddr, &laddr, sizeof(p->laddr));
+        //p->laddr.s6_addr[15]++;  /* pick a new number */
 
         p->i_flags |= GRE_KEY;
         p->o_flags |= GRE_KEY;
         p->link     = phys_index;
+        fprintf(stderr, "created tunnel %s, key: %u phys: %u\n", tunname, key, phys_index);
         p->i_key = p->o_key = htonl(key);  /* key ... in network byte order... */
 
         strlcpy(p->name, tunname, sizeof(p->name-1));
