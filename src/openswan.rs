@@ -113,7 +113,7 @@ impl OpenswanWhackInterface {
         command_map.insert(CborType::Integer(openswanwhack::whack_message_keys::WHACK_SHUTDOWN as u64),
                            CborType::Integer(1));
 
-        OpenswanWhackInterface::openswan_send_cmd(CborType::Map(command_map).serialize()).await.unwrap();
+        OpenswanWhackInterface::openswan_send_cmd(CborType::Map(command_map).serialize()).await.expect("Openswan already shutdown");
 
         return Ok(());
     }
@@ -283,7 +283,24 @@ impl OpenswanWhackInterface {
         Ok(policy_name)
     }
 
-    pub async fn up_adjacency(_policy_name: &String)-> Result<(), std::io::Error> {
+    pub fn up_encoded(policy_name: &String) -> Vec<u8> {
+        let mut initiate_map: BTreeMap<CborType, CborType> = BTreeMap::new();
+        initiate_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_NAME as u64),
+                            CborType::String(policy_name.clone()));
+
+        let mut command_map: BTreeMap<CborType, CborType> = BTreeMap::new();
+        command_map.insert(CborType::Integer(openswanwhack::whack_message_keys::WHACK_INITIATE as u64),
+                           CborType::Map(initiate_map));
+
+        return CborType::Map(command_map).serialize();
+    }
+
+
+    pub async fn up_adjacency(policy_name: &String)-> Result<(), std::io::Error> {
+
+        let encoded_up = OpenswanWhackInterface::up_encoded(policy_name);
+        let results = OpenswanWhackInterface::openswan_send_cmd(encoded_up).await.unwrap();
+        println!("status\n{}", results);
         Ok(())
     }
 
@@ -422,6 +439,21 @@ a1                                      # map(1)
       18 93                             # unsigned(147)
       1a 00015180                       # unsigned(86400)
 
+"));
+    }
+
+    #[test]
+    fn test_openswan_initiate() {
+        let policy_name = "peer-ABCDEF";
+
+        let encoded_initiate = OpenswanWhackInterface::up_encoded(&policy_name.to_string());
+        assert_eq!(encoded_initiate, hex!("
+a1                              # map(1)
+   07                           # unsigned(7)
+   a1                           # map(1)
+      01                        # unsigned(1)
+      6b                        # text(11)
+         706565722d414243444546 #
 "));
     }
 

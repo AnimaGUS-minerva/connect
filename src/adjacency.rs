@@ -189,7 +189,7 @@ impl Adjacency {
         delay_for(Duration::from_millis(delay_time as u64)).await;
 
         if let Some(osw_name) = &self.openswan_reference {
-            OpenswanWhackInterface::up_adjacency(&osw_name).await;
+            OpenswanWhackInterface::up_adjacency(&osw_name).await.unwrap();
         }
 
         Ok(())
