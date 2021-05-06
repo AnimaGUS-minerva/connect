@@ -252,3 +252,10 @@ fn main () -> Result<(), String> {
 
     return Ok(());
 }
+
+/*
+ * Local Variables:
+ * mode: rust
+ * compile-command: "cd .. && cargo build"
+ * End:
+ */

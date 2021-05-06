@@ -24,6 +24,7 @@ use std::fmt;
 use futures::stream::TryStreamExt;
 use futures::lock::{Mutex};
 use netlink_packet_sock_diag::constants::IPPROTO_UDP;
+use tokio::time::{delay_for, Duration};
 //use tokio::process::Command;
 
 use crate::dull::DullInterface;
@@ -40,7 +41,8 @@ pub struct Adjacency {
     pub advertisement_count:      u32,
     pub tunnelup:      bool,
     pub vti_iface:     String,
-    pub vti_number:    Option<u16>
+    pub vti_number:    Option<u16>,
+    pub openswan_reference: Option<String>,
 }
 
 impl fmt::Display for Adjacency {
@@ -60,6 +62,7 @@ impl Adjacency {
                     vti_iface:  "".to_string(),
                     ifindex:   0,
                     advertisement_count: 0,
+                    openswan_reference:  None,
                     tunnelup:  false }
     }
 
@@ -174,10 +177,21 @@ impl Adjacency {
                  self.advertisement_count,
                  self.v6addr, vtinum_str);
 
-        OpenswanWhackInterface::add_adjacency(&self.vti_iface,
-                                              vtinum as u32,
-                                              myll6addr,
-                                              self.v6addr).await.unwrap();
+        self.openswan_reference =
+            Some(OpenswanWhackInterface::add_adjacency(&self.vti_iface,
+                                                       vtinum as u32,
+                                                       myll6addr,
+                                                       self.v6addr).await.unwrap());
+
+
+        // now up the interface after a random delay, 0 to 255ms.
+        let delay_time: u8 = rand::random::<u8>();
+        delay_for(Duration::from_millis(delay_time as u64)).await;
+
+        if let Some(osw_name) = &self.openswan_reference {
+            OpenswanWhackInterface::up_adjacency(&osw_name).await;
+        }
+
         Ok(())
     }
 
