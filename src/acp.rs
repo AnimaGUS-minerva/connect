@@ -409,6 +409,11 @@ pub async fn process_control(child: Arc<Mutex<AcpChild>>, mut child_sock: tokio:
                         };
                          */
                     }
+
+                    Command::new("sbin/sunshine -K")
+                        .status()
+                        .expect("Unstrung kill");
+
                     /* kill self and all threads */
                     std::process::exit(0);
                 }
@@ -496,6 +501,11 @@ async fn child_processing(childinfo: Arc<Mutex<AcpChild>>, sock: UnixStream) {
     /* let parent know that we ready */
     println!("acp tell parent, child is ready");
     control::write_child_ready(&mut parent_stream).await.unwrap();
+
+    // start up RFC6550/RPL daemon, Unstrung
+    Command::new("/home/mcr/u")
+        .status()
+        .expect("Unstrung start");
 
     /* listen to commands from the parent */
     println!("acp child waiting for commands");
