@@ -195,10 +195,18 @@ impl OpenswanWhackInterface {
                             eyllv6:    Ipv6Addr,
                             vtinum:    u32) -> (Vec<u8>,String) {
 
-        let octets = eyllv6.octets();
-        let policy_name = format!("peer-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-                                  octets[8], octets[9], octets[10], octets[11],
-                                  octets[12],octets[13],octets[14], octets[15]);
+
+        let mut octets_ey = eyllv6.octets();
+        let mut octets_me = myllv6.octets();
+        if octets_ey[15] > octets_me[15] {
+            // swap them so that both ends come up with the same name.
+            let tmp = octets_me;
+            octets_me = octets_ey;
+            octets_ey = tmp;
+        }
+        let policy_name = format!("c_{:02x}{:02x}{:02x}{:02x}_{:02x}{:02x}{:02x}{:02x}",
+                                  octets_me[12], octets_me[13], octets_me[14], octets_me[15],
+                                  octets_ey[12], octets_ey[13], octets_ey[14], octets_ey[15]);
 
         let mut left_map = OpenswanWhackInterface::encode_end_policy(myllv6);
         left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_KEYTYPE as u64),
