@@ -146,13 +146,15 @@ impl Adjacency {
 
         handle.link().set(vti_link.header.index).up().execute().await?;
 
-        // now move this created entity to the ACP NS.
-        handle
-            .link()
-            .set(vti_link.header.index)
-            .setns_by_pid(acpns.as_raw() as u32)
-            .execute()
-            .await?;
+        if true {
+            // now move this created entity to the ACP NS.
+            handle
+                .link()
+                .set(vti_link.header.index)
+                .setns_by_pid(acpns.as_raw() as u32)
+                .execute()
+                .await?;
+        }
 
         Ok(())
     }
