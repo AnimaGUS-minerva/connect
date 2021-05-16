@@ -255,9 +255,11 @@ impl OpenswanWhackInterface {
 	//     POLICY_TUNNEL  = LELEM(5),
 	//     POLICY_PFS     = LELEM(6),
 	//     POLICY_UP      = LELEM(16),   /* do we want this up? */
+	//     POLICY_OVERLAPIP=LELEM(23),
 	//     POLICY_IKEV2_ALLOW   = LELEM(25), /* accept IKEv2?   0x0200 0000 */
 	//     POLICY_IKEV2_PROPOSE = LELEM(26), /* propose IKEv2?  0x0400 0000 */
-        let policy: u64 = (1<<1) | (1<<2) | (1<<3) | (1<<5) | (1<<6) | (1<<16) | (1<<25) | (1<<26);
+        let policy: u64 = (1<<1) | (1<<2) | (1<<3) | (1<<5) | (1<<6) |
+                          (1<<16) | (1<<23) | (1<<25) | (1<<26);
         connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_POLICY as u64),
                               CborType::Integer(policy));
 
