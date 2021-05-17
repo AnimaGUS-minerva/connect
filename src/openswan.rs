@@ -297,6 +297,8 @@ impl OpenswanWhackInterface {
         let mut initiate_map: BTreeMap<CborType, CborType> = BTreeMap::new();
         initiate_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_NAME as u64),
                             CborType::String(policy_name.clone()));
+        initiate_map.insert(CborType::Integer(openswanwhack::initoptions_keys::WHACK_OPT_INITTYPE as u64),
+                            CborType::Integer(openswanwhack::initiate_type::INITIATE_IF_DOWN));
 
         let mut command_map: BTreeMap<CborType, CborType> = BTreeMap::new();
         command_map.insert(CborType::Integer(openswanwhack::whack_message_keys::WHACK_INITIATE as u64),
