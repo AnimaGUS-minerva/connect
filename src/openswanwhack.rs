@@ -24,16 +24,16 @@ pub enum whack_message_keys {
 }
 
 #[allow(non_camel_case_types)]
-enum initoptions_keys {
+pub enum initoptions_keys {
   WHACK_OPT_INITTYPE = 146,
-};
+}
 
 #[allow(non_camel_case_types)]
-enum initiate_type {
+pub enum initiate_type {
     INITIATE_NOW = 1,
     INITIATE_IF_DOWN = 2,
     INITIATE_DPD_WAIT = 3,
-};
+}
 
 #[allow(non_camel_case_types)]
 pub enum statusoptions_keys {

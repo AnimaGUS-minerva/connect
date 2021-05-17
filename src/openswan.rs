@@ -298,7 +298,7 @@ impl OpenswanWhackInterface {
         initiate_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_NAME as u64),
                             CborType::String(policy_name.clone()));
         initiate_map.insert(CborType::Integer(openswanwhack::initoptions_keys::WHACK_OPT_INITTYPE as u64),
-                            CborType::Integer(openswanwhack::initiate_type::INITIATE_IF_DOWN));
+                            CborType::Integer(openswanwhack::initiate_type::INITIATE_IF_DOWN as u64));
 
         let mut command_map: BTreeMap<CborType, CborType> = BTreeMap::new();
         command_map.insert(CborType::Integer(openswanwhack::whack_message_keys::WHACK_INITIATE as u64),
@@ -385,8 +385,8 @@ a1                                      # map(1)
    04                                   # unsigned(4)
    a6                                   # map(6)
       01                                # unsigned(1)
-      75                                # text(21)
-         706565722d35383335303266666665313638383562 #
+      73                                # text(19)
+         635f66656438616262615f6665313638383562 #
       03                                # unsigned(3)
       ab                                # map(11)
          05                             # unsigned(5)
@@ -445,7 +445,7 @@ a1                                      # map(1)
          14                             # unsigned(20)
          19 01f4                        # unsigned(500)
       18 7f                             # unsigned(127)
-      1a 0601006e                       # unsigned(100728942)
+      1a 0681006e                       # unsigned(109117550)
       18 92                             # unsigned(146)
       19 3840                           # unsigned(14400)
       18 93                             # unsigned(147)
@@ -462,10 +462,12 @@ a1                                      # map(1)
         assert_eq!(encoded_initiate, hex!("
 a1                              # map(1)
    07                           # unsigned(7)
-   a1                           # map(1)
+   a2                           # map(2)
       01                        # unsigned(1)
       6b                        # text(11)
          706565722d414243444546 #
+      18 92                     # unsigned(146)
+      02                        # unsigned(2)
 "));
     }
 
