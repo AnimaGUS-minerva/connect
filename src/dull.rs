@@ -128,6 +128,7 @@ pub struct DullData {
     pub cmd_cnt:       u32,
     pub debug:         DebugOptions,
     pub exit_now:      bool,
+    pub auto_up_adj:   bool,
     pub handle:        Option<Handle>
 }
 
@@ -148,6 +149,7 @@ impl DullData {
         return DullData { interfaces: HashMap::new(), cmd_cnt: 0,
                           debug: DebugOptions::empty(),
                           exit_now:         false,
+                          auto_up_adj:      true,
                           acpns:            Pid::this(),
                           handle: None
         }
@@ -502,6 +504,11 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>, mut child_sock: tokio
                 control::DullControl::AdminDown { interface_index: ifn } => {
                     println!("DULL turning off interface {}", ifn);
                 }
+                control::DullControl::AutoAdjacency { adj_up: auto_up } => {
+                    let cl = child.lock().await;
+                    let mut dl = cl.data.lock().await;
+                    dl.auto_up_adj = auto_up;
+                }
                 control::DullControl::GraspDebug { grasp_debug: deb } => {
                     println!("Debug set to {}", deb);
                     let cl = child.lock().await;
@@ -589,12 +596,17 @@ async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream) {
     // now, also start pluto in this namespace.
     openswan::OpenswanWhackInterface::openswan_start().await.unwrap();
 
+    // DBG_CONTROL, bit 4
+    // DBG_CONTROLMORE, bit 9
+    openswan::OpenswanWhackInterface::openswan_some_debug((1<<4)|(1<<9)).await.unwrap();
+
     /* let parent know that we ready */
     println!("tell parent, child is ready");
     control::write_child_ready(&mut parent_stream).await.unwrap();
 
     /* listen to commands from the parent */
     println!("child waiting for commands");
+
     process_control(childinfo, parent_stream).await;
 }
 

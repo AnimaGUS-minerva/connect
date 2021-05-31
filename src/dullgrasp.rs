@@ -125,6 +125,9 @@ impl GraspDaemon {
         let mut debug_graspdaemon = {
             dd.lock().await.data.lock().await.debug.debug_graspdaemon
         };
+        let mut auto_up_adj = {
+            dd.lock().await.data.lock().await.auto_up_adj
+        };
         loop {
             let mut bufbytes = [0u8; 2048];
 
@@ -238,7 +241,7 @@ impl GraspDaemon {
                     adj.increment();
 
                     /* bring the dang thing up!! */
-                    let result = adj.up().await;
+                    let result = adj.up(auto_up_adj).await;
                     match result {
                         Err(stuff) => { println!("error: {:?}", stuff); }
                         Ok(_) => { }
@@ -252,6 +255,10 @@ impl GraspDaemon {
 
             debug_graspdaemon = {
                 dd.lock().await.data.lock().await.debug.debug_graspdaemon
+            };
+
+            auto_up_adj = {
+                dd.lock().await.data.lock().await.auto_up_adj
             };
 
             cnt += 1;

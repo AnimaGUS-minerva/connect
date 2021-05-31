@@ -83,6 +83,10 @@ struct ConnectOptions {
     #[structopt(default_value = "86400", long, parse(try_from_str))]
     salive: u32,
 
+    // whether to bring IPsec SA up automatically
+    #[structopt(default_value = "false", long, parse(try_from_str))]
+    auto_up: bool,
+
     //    bridge_name: String
 
 }
@@ -115,6 +119,20 @@ async fn set_acp_ns(dull: &mut dull::Dull, acpns: Pid) {
     }
 }
 
+async fn set_auto_up_adj(dull: &mut dull::Dull, auto_up: bool) {
+    let opt = control::DullControl::AutoAdjacency { adj_up: auto_up };
+
+    let result = control::write_control(&mut dull.child_stream, &opt).await;
+
+    match result  {
+        Err(e) => match e.kind() {
+            ErrorKind::BrokenPipe  => { return (); },
+            _                      => { return (); }  // maybe error.
+        }
+        _ => { return (); }
+    }
+}
+
 async fn parents(rt: Arc<tokio::runtime::Runtime>,
                  dullinit: dull::DullInit,
                  acpinit:  acp::AcpInit,
@@ -129,6 +147,9 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
 
     // tell the DULL namespace the debug values
     set_debug(&mut dull).await;
+
+    // tell the DULL whether to bring up IPsec automatically
+    set_auto_up_adj(&mut dull, args.auto_up).await;
 
     // wait for hello from ACP and then DULL namespace
     println!("waiting for ACP  startup");

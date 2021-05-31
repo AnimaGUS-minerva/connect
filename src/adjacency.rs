@@ -159,7 +159,7 @@ impl Adjacency {
         Ok(())
     }
 
-    pub async fn up(self: &mut Adjacency) -> Result<(), rtnetlink::Error> {
+    pub async fn up(self: &mut Adjacency, auto_up: bool) -> Result<(), rtnetlink::Error> {
         // A VTI will have been assigned already if we already trying to bring a tunnel up.
         if self.vti_number == None {
             self.make_vti().await?;
@@ -186,12 +186,15 @@ impl Adjacency {
                                                        self.v6addr).await.unwrap());
 
 
-        // now up the interface after a random delay, 0 to 255ms.
-        let delay_time: u8 = rand::random::<u8>();
-        delay_for(Duration::from_millis(delay_time as u64)).await;
 
-        if let Some(osw_name) = &self.openswan_reference {
-            OpenswanWhackInterface::up_adjacency(&osw_name).await.unwrap();
+        if auto_up {
+            if let Some(osw_name) = &self.openswan_reference {
+                // now up the interface after a random delay, 0 to 255ms.
+                let delay_time: u8 = rand::random::<u8>();
+                delay_for(Duration::from_millis(delay_time as u64)).await;
+
+                OpenswanWhackInterface::up_adjacency(&osw_name).await.unwrap();
+            }
         }
 
         Ok(())

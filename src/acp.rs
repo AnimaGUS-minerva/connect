@@ -426,6 +426,7 @@ pub async fn process_control(child: Arc<Mutex<AcpChild>>, mut child_sock: tokio:
                     let mut dl = cl.data.lock().await;
                     dl.debug.debug_graspdaemon = deb;
                 }
+                control::DullControl::AutoAdjacency { .. } => {}
                 control::DullControl::ChildReady => {} // nothing to do
                 control::DullControl::DullNamespace { .. } => {} // nothing to do
             }
