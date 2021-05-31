@@ -108,6 +108,20 @@ impl OpenswanWhackInterface {
         return Ok(results)
     }
 
+    pub async fn openswan_some_debug(bits: u64) -> Result<(), std::io::Error> {
+        let mut debug_option: BTreeMap<CborType, CborType> = BTreeMap::new();
+        debug_option.insert(CborType::Integer(openswanwhack::optionscommand_keys::WHACK_OPT_ADD_DEBUGGING as u64),
+                            CborType::Integer(bits));
+
+        let mut options_map: BTreeMap<CborType, CborType> = BTreeMap::new();
+        options_map.insert(CborType::Integer(openswanwhack::whack_message_keys::WHACK_OPTIONS as u64),
+                           CborType::Map(debug_option));
+
+        OpenswanWhackInterface::openswan_send_cmd(CborType::Map(options_map).serialize()).await.expect("debug options");
+
+        return Ok(());
+    }
+
     pub async fn openswan_stop() -> Result<(), std::io::Error> {
         let mut command_map: BTreeMap<CborType, CborType> = BTreeMap::new();
         command_map.insert(CborType::Integer(openswanwhack::whack_message_keys::WHACK_SHUTDOWN as u64),
