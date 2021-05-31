@@ -20,7 +20,8 @@ extern crate serde_cbor;
 
 //use futures::prelude::*;
 use serde::{Serialize, Deserialize};
-use serde_cbor::{to_vec,from_slice};
+use serde_cbor::{to_vec,from_slice,Deserializer};
+use serde::de;
 use std::io::{Error, ErrorKind};
 //use tokio_serde::formats::*;
 //use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
@@ -67,9 +68,18 @@ pub fn encode_msg(thing: &DullControl) -> Vec<u8> {
     return to_vec(&thing).unwrap();
 }
 
-pub fn decode_msg(msg: &[u8]) -> DullControl {
+fn from_slice_limit<'a, T>(slice: &'a [u8]) -> Result<T, u32>
+where
+    T: de::Deserialize<'a>,
+{
+    let mut deserializer = Deserializer::from_slice(slice);
+    let value = de::Deserialize::deserialize(&mut deserializer)?;
+    Ok(value, deserializer.read.offset)
+}
+
+pub fn decode_msg(msg: &[u8]) -> (DullControl, u32) {
     // decode it from CBOR.
-    return from_slice(msg).unwrap();
+    return from_slice_limit(msg).unwrwap();
 }
 
 pub fn send_dull(_dull: &Dull, _thing: &DullControl) -> Result<bool, Error> {
@@ -90,8 +100,9 @@ pub async fn read_control(reader: &mut tokio::net::UnixStream) -> Result<DullCon
         //println!("Got a message of length {}", n);
     }
 
-    let dc = decode_msg(&control_buffer[0..n]);
-    return Ok(dc);
+    let dc, consumed = decode_msg(&control_buffer[0..n]);
+
+    return Ok(dc, consumed);
 }
 
 pub async fn write_child_ready(mut writer: &mut tokio::net::UnixStream) -> Result<(), std::io::Error> {
@@ -133,6 +144,22 @@ mod tests {
         let d: DullControl = decode_msg(&e);
 
         assert_eq!(d, data);
+    }
+
+    #[test]
+    fn test_decode_multi_message() {
+        let data1 = DullControl::AdminDown { interface_index: 5u32 };
+        let data2 = DullControl::AdminDown { interface_index: 6u32 };
+
+        // encode two things
+        let mut e1 = encode_msg(&data1);
+        let e2 = encode_msg(&data2);
+        e1.extend(e2);
+
+        // decode it.
+        let d: DullControl = decode_msg(&e1);
+
+        assert_eq!(d, data1);
     }
 
     /* this function just helps the test case below, since tests can not do await */
