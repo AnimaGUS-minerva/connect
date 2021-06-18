@@ -20,8 +20,9 @@ extern crate serde_cbor;
 
 //use futures::prelude::*;
 use serde::{Serialize, Deserialize};
-use serde_cbor::{to_vec,from_slice,Deserializer};
-use serde::de;
+use serde_cbor::{to_vec,from_slice};
+//use serde_cbor::Deserializer;
+//use serde::de;
 use std::io::{Error, ErrorKind};
 //use tokio_serde::formats::*;
 //use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
@@ -68,18 +69,9 @@ pub fn encode_msg(thing: &DullControl) -> Vec<u8> {
     return to_vec(&thing).unwrap();
 }
 
-fn from_slice_limit<'a, T>(slice: &'a [u8]) -> Result<T, u32>
-where
-    T: de::Deserialize<'a>,
-{
-    let mut deserializer = Deserializer::from_slice(slice);
-    let value = de::Deserialize::deserialize(&mut deserializer)?;
-    Ok(value, deserializer.read.offset)
-}
-
-pub fn decode_msg(msg: &[u8]) -> (DullControl, u32) {
+pub fn decode_msg(msg: &[u8]) -> DullControl {
     // decode it from CBOR.
-    return from_slice_limit(msg).unwrwap();
+    return from_slice(msg).unwrap();
 }
 
 pub fn send_dull(_dull: &Dull, _thing: &DullControl) -> Result<bool, Error> {
@@ -88,7 +80,11 @@ pub fn send_dull(_dull: &Dull, _thing: &DullControl) -> Result<bool, Error> {
 }
 
 pub async fn write_control(writer: &mut tokio::net::UnixStream, data: &DullControl) -> Result<(), std::io::Error> {
-    return writer.write_all(&encode_msg(data)).await;
+    let encoded = &encode_msg(data);
+    let len     = encoded.len();
+    let veclen = to_vec(&len).unwrap();
+    writer.write_all(&veclen).await.unwrap();
+    return writer.write_all(encoded).await;
 }
 
 pub async fn read_control(reader: &mut tokio::net::UnixStream) -> Result<DullControl, std::io::Error> {
@@ -96,13 +92,19 @@ pub async fn read_control(reader: &mut tokio::net::UnixStream) -> Result<DullCon
 
     let mut n = 0;
     while n == 0 {
-        n = reader.read(&mut control_buffer[..]).await?;
+        let sizevec = reader.read(&mut control_buffer[..]).await?;
+        let size    = from_slice(&control_buffer[0..sizevec]).unwrap();
+
+        // size is number of bytes to read now.
+        let mut handle = reader.take(size);
+
+        n = handle.read(&mut control_buffer[..]).await?;
         //println!("Got a message of length {}", n);
     }
 
-    let dc, consumed = decode_msg(&control_buffer[0..n]);
+    let dc = decode_msg(&control_buffer[0..n]);
 
-    return Ok(dc, consumed);
+    return Ok(dc);
 }
 
 pub async fn write_child_ready(mut writer: &mut tokio::net::UnixStream) -> Result<(), std::io::Error> {
