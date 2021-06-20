@@ -27,7 +27,7 @@ use std::io::{Error, ErrorKind};
 //use tokio_serde::formats::*;
 //use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use std::os::unix::net::UnixStream;
-use tokio::io::{AsyncWriteExt, AsyncReadExt};
+use tokio::io::{AsyncWrite, AsyncRead, AsyncWriteExt, AsyncReadExt};
 
 use crate::dull::Dull;
 
@@ -79,7 +79,7 @@ pub fn send_dull(_dull: &Dull, _thing: &DullControl) -> Result<bool, Error> {
     return Ok(true);
 }
 
-pub async fn write_control(writer: &mut tokio::net::UnixStream, data: &DullControl) -> Result<(), std::io::Error> {
+pub async fn write_control(writer: &mut dyn AsyncWrite, data: &DullControl) -> Result<(), std::io::Error> {
     let encoded = &encode_msg(data);
     let len     = encoded.len();
     let veclen = to_vec(&len).unwrap();
@@ -87,7 +87,7 @@ pub async fn write_control(writer: &mut tokio::net::UnixStream, data: &DullContr
     return writer.write_all(encoded).await;
 }
 
-pub async fn read_control(reader: &mut tokio::net::UnixStream) -> Result<DullControl, std::io::Error> {
+pub async fn read_control(reader: &mut dyn AsyncRead) -> Result<DullControl, std::io::Error> {
     let mut control_buffer = [0; 256];
 
     let mut n = 0;
@@ -138,6 +138,8 @@ mod tests {
     #[test]
     fn test_encode_decode_admindown() {
         let data = DullControl::AdminDown { interface_index: 5u32 };
+
+        //let pipe =
 
         // encode it.
         let e = encode_msg(&data);
