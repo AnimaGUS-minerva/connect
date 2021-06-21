@@ -39,7 +39,7 @@ use std::collections::HashMap;
 use std::process::Command;
 //use std::convert::TryInto;
 use tokio::signal;
-use tokio::time::{delay_for, Duration};
+use tokio::time::{sleep, Duration};
 
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
@@ -307,8 +307,10 @@ impl AcpChild {
     // mostly used by unit test cases
 
     pub fn empty() -> Arc<Mutex<AcpChild>> {
-        let rt = tokio::runtime::Builder::new()
-            .threaded_scheduler()
+        // tokio 1.7 with rt-multi-thread
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(4)
+            .thread_name("dull")
             .enable_all()
             .build()
             .unwrap();
@@ -481,7 +483,7 @@ async fn ignore_sigint(childinfo: &Arc<Mutex<AcpChild>>) {
                 let mut dl = cl.data.lock().await;
                 dl.exit_now = true;
             }
-            delay_for(Duration::from_millis(500)).await;
+            sleep(Duration::from_millis(500)).await;
         }
     });
 }
@@ -561,8 +563,10 @@ pub fn namespace_daemon() -> Result<AcpInit, std::io::Error> {
             println!("In child: creating name space");
             create_netns().unwrap();
 
-            let rt = tokio::runtime::Builder::new()
-                .threaded_scheduler()
+            // tokio 1.7
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(4)
+                .thread_name("acp")
                 .enable_all()
                 .build()
                 .unwrap();

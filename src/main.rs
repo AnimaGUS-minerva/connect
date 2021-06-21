@@ -23,7 +23,8 @@ use std::fs::File;
 use std::io::prelude::*;
 //use rtnetlink::{new_connection};
 use std::io::ErrorKind;
-use tokio::time::{delay_for, Duration};
+use tokio::time::{sleep, Duration};
+use tokio::runtime;
 //use std::os::unix::net::UnixStream;
 //use sysctl::Sysctl;
 use structopt::StructOpt;
@@ -177,16 +178,16 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
     let _parentloop = systemif::parent_processing(&rt, dull.dullpid).await;
     println!("parent processing loop started");
 
-    let (mut sender, mut receiver) = mpsc::channel(2);
+    let (sender, mut receiver) = mpsc::channel(2);
 
-    let mut ctrlsend = sender.clone();
+    let ctrlsend = sender.clone();
 
     /* listen for ctrl_c signal, and send a signal when received */
     rt.spawn(async move {
         loop {
             signal::ctrl_c().await.unwrap();
             ctrlsend.send(1).await.unwrap();
-            delay_for(Duration::from_millis(500)).await;
+            sleep(Duration::from_millis(500)).await;
         }
     });
 
@@ -194,7 +195,7 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
     rt.spawn(async move {
         loop {
             //println!("spin");
-            delay_for(Duration::from_millis(500)).await;
+            sleep(Duration::from_millis(500)).await;
             sender.send(0).await.unwrap();
         }}
     );
@@ -223,7 +224,7 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
     exit_child(&mut acp.child_stream).await;
 
     println!("\nwaiting for children to shutdown");
-    delay_for(Duration::from_millis(1000)).await;
+    sleep(Duration::from_millis(1000)).await;
     kill(dull.dullpid, Signal::SIGINT).unwrap();
     kill(acp.acppid, Signal::SIGINT).unwrap();
 
@@ -260,16 +261,18 @@ fn main () -> Result<(), String> {
     let dull = dull::namespace_daemon().unwrap();
     write_pid("dull.pid", dull.dullpid).unwrap();
 
-    // tokio 0.2
-    let brt = tokio::runtime::Builder::new()
-        .threaded_scheduler()
+    // tokio 1.7
+    let brt = runtime::Builder::new_multi_thread()
+        .worker_threads(4)
+        .thread_name("parent")
         .enable_all()
         .build()
         .unwrap();
 
     let rt = Arc::new(brt);
     let future = parents(rt.clone(), dull, acp, args);
-    rt.handle().block_on(future).unwrap();
+    // This will run the runtime and future on the current thread
+    rt.block_on(async { future.await.unwrap(); } );
 
     return Ok(());
 }

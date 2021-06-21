@@ -22,7 +22,7 @@ extern crate moz_cbor as cbor;
 //use nix::unistd::*;
 use std::net::Ipv6Addr;
 use tokio::net::UdpSocket;
-use tokio::time::{delay_for, Duration};
+use tokio::time::{sleep, Duration};
 use std::io::Error;
 use std::io::ErrorKind;
 //use std::net::SocketAddrV6;
@@ -117,7 +117,7 @@ impl GraspDaemon {
 
     pub async fn read_loop(gd: Arc<Mutex<GraspDaemon>>,
                            dd: Arc<Mutex<DullChild>>,
-                           mut recv: tokio::net::UdpSocket /*tokio::net::udp::RecvHalf*/) {
+                           recv: tokio::net::UdpSocket /*tokio::net::udp::RecvHalf*/) {
 
         //let _runtime = { dd.lock().await.runtime.clone() };
         let mut cnt: u32 = 0;
@@ -295,7 +295,7 @@ impl GraspDaemon {
 
     pub async fn announce_loop(gd: Arc<Mutex<GraspDaemon>>,
                                dd: Arc<Mutex<DullChild>>,
-                               mut send: tokio::net::UdpSocket /*tokio::net::udp::SendHalf*/) {
+                               send: tokio::net::UdpSocket /*tokio::net::udp::SendHalf*/) {
         let v6mcast = {
             let gld = gd.lock().await;
             gld.grasp_dest
@@ -327,7 +327,7 @@ impl GraspDaemon {
                 println!("short write: {}", size);
             }
             */
-            delay_for(Duration::from_millis(5000)).await;
+            sleep(Duration::from_millis(5000)).await;
             if (loops % 12) == 0 {
                 /* every minutes, print out the list of all adjancies */
                 let gdl = gd.lock().await;

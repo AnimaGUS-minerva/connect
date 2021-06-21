@@ -25,7 +25,7 @@ use std::net::Ipv6Addr;
 //use futures::lock::{Mutex};
 //use netlink_packet_sock_diag::constants::IPPROTO_UDP;
 use std::collections::BTreeMap;
-use tokio::time::{delay_for, Duration};
+use tokio::time::{sleep, Duration};
 use tokio::net::UnixStream;
 use cbor::CborType;
 use tokio::io::AsyncWriteExt;
@@ -148,7 +148,7 @@ impl OpenswanWhackInterface {
             .await;
 
         // short delay to let Openswan start up.
-        delay_for(Duration::from_millis(100)).await;
+        sleep(Duration::from_millis(100)).await;
         // could check with ::connect to see if control socket is present yet.
 
         return result;
@@ -165,7 +165,7 @@ impl OpenswanWhackInterface {
         // 3. do it twice, because sometimes we get:
         //   bind() for dull004/dull004 [fe80::609c:62ff:fed8:abba%92]:500 in process_raw_ifaces(). Errno 99: Cannot assign requested address
         // and we have no idea why.
-        delay_for(Duration::from_millis(100)).await;
+        sleep(Duration::from_millis(100)).await;
         OpenswanWhackInterface::openswan_send_cmd(
             OpenswanWhackInterface::openswan_encode_linkandlisten()).await.unwrap();
 

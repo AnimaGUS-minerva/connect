@@ -39,7 +39,7 @@ use std::os::unix::net::UnixStream;
 use std::net::Ipv6Addr;
 use std::collections::HashMap;
 use tokio::process::{Command};
-use tokio::time::{delay_for, Duration};
+use tokio::time::{sleep, Duration};
 use tokio::signal;
 //use std::convert::TryInto;
 use sysctl::Sysctl;
@@ -368,8 +368,10 @@ impl DullChild {
     // mostly used by unit test cases
 
     pub fn empty() -> Arc<Mutex<DullChild>> {
-        let rt = tokio::runtime::Builder::new()
-            .threaded_scheduler()
+        // tokio 1.7 with rt-multi-thread
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(4)
+            .thread_name("dull")
             .enable_all()
             .build()
             .unwrap();
@@ -457,7 +459,7 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
                         GraspDaemon::start_loop(gd, recv, send, child.clone()).await;
 
                         // delay to let interfaces become stable.
-                        delay_for(Duration::from_millis(200)).await;
+                        sleep(Duration::from_millis(200)).await;
                         // poke Openswan to rescan the list of interfaces
                         openswan::OpenswanWhackInterface::openswan_setup().await.unwrap();
                     }
@@ -482,7 +484,7 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>, mut child_sock: tokio
                 control::DullControl::Exit => {
                     println!("DULL process shutting down pluto");
                     openswan::OpenswanWhackInterface::openswan_stop().await.expect("openswan was not stopped");
-                    delay_for(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(100)).await;
                     println!("DULL process now dying");
                     {
                         let cl = child.lock().await;
@@ -497,7 +499,7 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>, mut child_sock: tokio
                         };
                          */
                     }
-                    delay_for(Duration::from_millis(500)).await;
+                    sleep(Duration::from_millis(500)).await;
                     /* kill self and all threads */
                     std::process::exit(0);
                 }
@@ -575,7 +577,7 @@ async fn ignore_sigint(childinfo: &Arc<Mutex<DullChild>>) {
                 let mut dl = cl.data.lock().await;
                 dl.exit_now = true;
             }
-            delay_for(Duration::from_millis(500)).await;
+            sleep(Duration::from_millis(500)).await;
         }
     });
 }
@@ -664,8 +666,10 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
             println!("In child: creating name space");
             create_netns().unwrap();
 
-            let rt = tokio::runtime::Builder::new()
-                .threaded_scheduler()
+            // tokio 1.7
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(4)
+                .thread_name("dull")
                 .enable_all()
                 .build()
                 .unwrap();

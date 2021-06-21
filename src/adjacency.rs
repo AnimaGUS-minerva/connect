@@ -24,7 +24,7 @@ use std::fmt;
 use futures::stream::TryStreamExt;
 use futures::lock::{Mutex};
 use netlink_packet_sock_diag::constants::IPPROTO_UDP;
-use tokio::time::{delay_for, Duration};
+use tokio::time::{sleep, Duration};
 //use tokio::process::Command;
 
 use crate::dull::DullInterface;
@@ -191,7 +191,7 @@ impl Adjacency {
             if let Some(osw_name) = &self.openswan_reference {
                 // now up the interface after a random delay, 0 to 255ms.
                 let delay_time: u8 = rand::random::<u8>();
-                delay_for(Duration::from_millis(delay_time as u64)).await;
+                sleep(Duration::from_millis(delay_time as u64)).await;
 
                 OpenswanWhackInterface::up_adjacency(&osw_name).await.unwrap();
             }
