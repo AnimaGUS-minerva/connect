@@ -106,77 +106,78 @@ pub async fn write_child_ready(mut writer: &mut tokio::net::UnixStream) -> Resul
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[test]
-fn test_encode_decode_quit() {
-    let data = DullControl::Exit;
+    #[test]
+    fn test_encode_decode_quit() {
+        let data = DullControl::Exit;
 
-    let e = encode_msg(&data);
+        let e = encode_msg(&data);
 
-    // decode it.
-    let d: DullControl = from_slice(&e).unwrap();
+        // decode it.
+        let d: DullControl = from_slice(&e).unwrap();
 
-    assert_eq!(d, data);
-}
-
-#[test]
-fn test_encode_decode_admindown() {
-    let data = DullControl::AdminDown { interface_index: 5u32 };
-
-    // encode it.
-    let e = encode_msg(&data);
-
-    // decode it.
-    let d: DullControl = decode_msg(&e);
-
-    assert_eq!(d, data);
-}
-
-/* this function just helps the test case below, since tests can not do await */
-#[allow(dead_code)]
-async fn read_write_admin_via_socket(data: &DullControl) -> Result<DullControl, std::io::Error> {
-    let pair = UnixStream::pair().unwrap();
-
-    let mut reader = tokio::net::UnixStream::from_std(pair.1).unwrap();
-    let mut writer = tokio::net::UnixStream::from_std(pair.0).unwrap();
-
-    write_control(&mut writer, data).await.unwrap();
-    return read_control(&mut reader).await;
-}
-
-#[allow(unused_macros)]
-macro_rules! aw {
-    ($e:expr) => {
-        tokio_test::block_on($e)
-    };
-}
-
-#[test]
-fn test_write_read_admin_via_socket() {
-    let data = DullControl::AdminDown { interface_index: 5u32 };
-
-    assert_eq!(aw!(read_write_admin_via_socket(&data)).unwrap(), data);
-}
-
-#[allow(dead_code)]
-async fn write_admin_via_closed_socket(data: &DullControl) -> Result<(), std::io::Error> {
-    let pair = UnixStream::pair().unwrap();
-
-    //let reader = tokio::net::UnixStream::from_std(pair.1).unwrap();
-    let mut writer = tokio::net::UnixStream::from_std(pair.0).unwrap();
-
-    match write_control(&mut writer, data).await {
-        Err(e) => match e.kind() {
-            ErrorKind::BrokenPipe  => { return Ok(()); },
-            _                      => { return Err(e); }
-        }
-        _ => { return Ok(()); }
+        assert_eq!(d, data);
     }
-}
 
-#[test]
-fn test_write_when_socket_closed() {
-    let data = DullControl::AdminDown { interface_index: 5u32 };
+    #[test]
+    fn test_encode_decode_admindown() {
+        let data = DullControl::AdminDown { interface_index: 5u32 };
 
-    assert_eq!(aw!(write_admin_via_closed_socket(&data)).unwrap(), ());
+        // encode it.
+        let e = encode_msg(&data);
+
+        // decode it.
+        let d: DullControl = decode_msg(&e);
+
+        assert_eq!(d, data);
+    }
+
+    /* this function just helps the test case below, since tests can not do await */
+    async fn read_write_admin_via_socket(data: &DullControl) -> Result<DullControl, std::io::Error> {
+        let pair = UnixStream::pair().unwrap();
+
+        let mut reader = tokio::net::UnixStream::from_std(pair.1).unwrap();
+        let mut writer = tokio::net::UnixStream::from_std(pair.0).unwrap();
+
+        write_control(&mut writer, data).await.unwrap();
+        return read_control(&mut reader).await;
+    }
+
+    macro_rules! aw {
+        ($e:expr) => {
+            tokio_test::block_on($e)
+        };
+    }
+
+    #[test]
+    fn test_write_read_admin_via_socket() {
+        let data = DullControl::AdminDown { interface_index: 5u32 };
+
+        assert_eq!(aw!(read_write_admin_via_socket(&data)).unwrap(), data);
+    }
+
+    async fn write_admin_via_closed_socket(data: &DullControl) -> Result<(), std::io::Error> {
+        let pair = UnixStream::pair().unwrap();
+
+        //let reader = tokio::net::UnixStream::from_std(pair.1).unwrap();
+        let mut writer = tokio::net::UnixStream::from_std(pair.0).unwrap();
+
+        match write_control(&mut writer, data).await {
+            Err(e) => match e.kind() {
+                ErrorKind::BrokenPipe  => { return Ok(()); },
+                _                      => { return Err(e); }
+            }
+            _ => { return Ok(()); }
+        }
+    }
+
+    #[test]
+    fn test_write_when_socket_closed() {
+        let data = DullControl::AdminDown { interface_index: 5u32 };
+
+        assert_eq!(aw!(write_admin_via_closed_socket(&data)).unwrap(), ());
+    }
 }
