@@ -57,8 +57,8 @@ static VERSION: &str = "0.9.0";
 static VARCONNECT: &str = "/run/acp";
 
 // rewrite with new Trait that takes Acp or Dull.
-async fn exit_child(stream: &mut tokio::net::UnixStream) {
-    let result = control::write_control(stream, &control::DullControl::Exit).await;
+async fn exit_child(stream: &mut control::ControlStream) {
+    let result = stream.write_control(&control::DullControl::Exit).await;
 
     match result  {
         Err(e) => match e.kind() {
@@ -92,10 +92,8 @@ struct ConnectOptions {
 
 }
 
-async fn set_debug(dull: &mut dull::Dull) {
-    let opt = control::DullControl::GraspDebug { grasp_debug: dull.debug.debug_graspdaemon };
-
-    let result = control::write_control(&mut dull.child_stream, &opt).await;
+async fn set_opt(dull: &mut dull::Dull, opt: control::DullControl) {
+    let result = dull.child_stream.write_control(&opt).await;
 
     match result  {
         Err(e) => match e.kind() {
@@ -104,34 +102,23 @@ async fn set_debug(dull: &mut dull::Dull) {
         }
         _ => { return (); }
     }
+}
+
+async fn set_debug(dull: &mut dull::Dull) {
+    let opt = control::DullControl::GraspDebug { grasp_debug: dull.debug.debug_graspdaemon };
+
+    set_opt(dull, opt).await;
 }
 
 async fn set_acp_ns(dull: &mut dull::Dull, acpns: Pid) {
     let opt = control::DullControl::DullNamespace { namespace_id: acpns.as_raw() as i32};
 
-    let result = control::write_control(&mut dull.child_stream, &opt).await;
-
-    match result  {
-        Err(e) => match e.kind() {
-            ErrorKind::BrokenPipe  => { return (); },
-            _                      => { return (); }  // maybe error.
-        }
-        _ => { return (); }
-    }
+    set_opt(dull, opt).await;
 }
 
 async fn set_auto_up_adj(dull: &mut dull::Dull, auto_up: bool) {
     let opt = control::DullControl::AutoAdjacency { adj_up: auto_up };
-
-    let result = control::write_control(&mut dull.child_stream, &opt).await;
-
-    match result  {
-        Err(e) => match e.kind() {
-            ErrorKind::BrokenPipe  => { return (); },
-            _                      => { return (); }  // maybe error.
-        }
-        _ => { return (); }
-    }
+    set_opt(dull, opt).await;
 }
 
 async fn parents(rt: Arc<tokio::runtime::Runtime>,
@@ -154,7 +141,7 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
 
     // wait for hello from ACP and then DULL namespace
     println!("waiting for ACP  startup");
-    while let Ok(msg) = control::read_control(&mut acp.child_stream).await {
+    while let Ok(msg) = acp.child_stream.read_control().await {
         match msg {
             control::DullControl::ChildReady => break,
             _ => {}
@@ -162,7 +149,7 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
     }
 
     println!("waiting for DULL startup");
-    while let Ok(msg) = control::read_control(&mut dull.child_stream).await {
+    while let Ok(msg) = dull.child_stream.read_control().await {
         match msg {
             control::DullControl::ChildReady => break,
             _ => {}
