@@ -21,13 +21,14 @@ extern crate serde_cbor;
 //use futures::prelude::*;
 use serde::{Serialize, Deserialize};
 use serde_cbor::{to_vec,from_slice};
-//use serde_cbor::Deserializer;
-//use serde::de;
+use serde_cbor::Deserializer;
+use serde::de;
 use std::io::{Error, ErrorKind};
 //use tokio_serde::formats::*;
 //use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use std::os::unix::net::UnixStream;
 use tokio::io::{AsyncWrite, AsyncRead, AsyncWriteExt, AsyncReadExt};
+use tokio::io::DuplexStream;
 
 use crate::dull::Dull;
 
@@ -79,7 +80,8 @@ pub fn send_dull(_dull: &Dull, _thing: &DullControl) -> Result<bool, Error> {
     return Ok(true);
 }
 
-pub async fn write_control(writer: &mut dyn AsyncWrite, data: &DullControl) -> Result<(), std::io::Error> {
+pub async fn write_control(writer: &mut (dyn AsyncWrite + Unpin), data: &DullControl) -> Result<(), std::io::Error> {
+
     let encoded = &encode_msg(data);
     let len     = encoded.len();
     let veclen = to_vec(&len).unwrap();
@@ -87,16 +89,60 @@ pub async fn write_control(writer: &mut dyn AsyncWrite, data: &DullControl) -> R
     return writer.write_all(encoded).await;
 }
 
-pub async fn read_control(reader: &mut dyn AsyncRead) -> Result<DullControl, std::io::Error> {
+fn from_slice_limit<'a, T>(slice: &'a [u8]) -> Result<(T, u32), serde_cbor::Error>
+where
+    T: de::Deserialize<'a>,
+{
+    let mut deserializer = Deserializer::from_slice(slice);
+    let value = de::Deserialize::deserialize(&mut deserializer)?;
+    //let remaining = deserializer.read.offset;
+    let remaining = 0;
+    Ok((value, remaining))
+}
+
+#[derive(Debug)]
+struct ControlStream {
+    reader: DuplexStream,
+    writer: DuplexStream,
+}
+
+impl ControlStream {
+    pub fn empty() -> Self {
+        let (client, server) = tokio::io::duplex(256);
+
+        ControlStream {
+            reader: client,
+            writer: server
+        }
+    }
+
+    pub async fn write_control(self: &mut Self, data: &DullControl) -> Result<(), std::io::Error> {
+
+        let encoded = &encode_msg(data);
+        let len     = encoded.len();
+        let veclen = to_vec(&len).unwrap();
+        self.writer.write_all(&veclen).await.unwrap();
+        return self.writer.write_all(encoded).await;
+    }
+
+}
+
+
+pub async fn read_control(reader: &mut (dyn AsyncRead + Unpin)) -> Result<DullControl, std::io::Error> {
     let mut control_buffer = [0; 256];
 
     let mut n = 0;
     while n == 0 {
+
         let sizevec = reader.read(&mut control_buffer[..]).await?;
-        let size    = from_slice(&control_buffer[0..sizevec]).unwrap();
+        let (size, _taken) = from_slice_limit(&control_buffer[0..sizevec]).unwrap();
 
         // size is number of bytes to read now.
         let mut handle = reader.take(size);
+
+        // taken, is the number of bytes left in the buffer.
+        //if size > taken {
+        //}
 
         n = handle.read(&mut control_buffer[..]).await?;
         //println!("Got a message of length {}", n);
@@ -108,6 +154,7 @@ pub async fn read_control(reader: &mut dyn AsyncRead) -> Result<DullControl, std
 }
 
 pub async fn write_child_ready(mut writer: &mut tokio::net::UnixStream) -> Result<(), std::io::Error> {
+
     let result = write_control(&mut writer, &DullControl::ChildReady).await;
 
     match result  {
@@ -121,7 +168,26 @@ pub async fn write_child_ready(mut writer: &mut tokio::net::UnixStream) -> Resul
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{read_control,write_control, DullControl};
+    use super::{encode_msg, from_slice, decode_msg};
+    use super::{ControlStream, ErrorKind, UnixStream};
+
+    macro_rules! aw {
+        ($e:expr) => {
+            tokio_test::block_on($e)
+        };
+    }
+
+    async fn do_read_write_control_stream() {
+        let mut fs = ControlStream::empty();
+        let ex = DullControl::Exit;
+        fs.write_control(&ex).await.unwrap();
+    }
+
+    #[test]
+    fn test_read_write_control_stream() {
+        aw!(do_read_write_control_stream());
+    }
 
     #[test]
     fn test_encode_decode_quit() {
@@ -168,22 +234,14 @@ mod tests {
 
     /* this function just helps the test case below, since tests can not do await */
     async fn read_write_admin_via_socket(data: &DullControl) -> Result<DullControl, std::io::Error> {
-        let pair = UnixStream::pair().unwrap();
 
-        let mut reader = tokio::net::UnixStream::from_std(pair.1).unwrap();
-        let mut writer = tokio::net::UnixStream::from_std(pair.0).unwrap();
+        let (mut reader, mut writer) = tokio::io::duplex(256);
 
         write_control(&mut writer, data).await.unwrap();
         return read_control(&mut reader).await;
     }
 
-    macro_rules! aw {
-        ($e:expr) => {
-            tokio_test::block_on($e)
-        };
-    }
-
-    #[test]
+    //#[test]
     fn test_write_read_admin_via_socket() {
         let data = DullControl::AdminDown { interface_index: 5u32 };
 
