@@ -33,7 +33,7 @@ use crate::openswan;
 use nix::unistd::*;
 use nix::fcntl::fcntl;
 use nix::sched::unshare;
-use std::os::unix::io::AsRawFd;
+//use std::os::unix::io::AsRawFd;
 //use nix::sched::setns;
 use nix::sched::CloneFlags;
 use std::os::unix::net::UnixStream;
@@ -615,24 +615,26 @@ async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream) {
     process_control(childinfo, parent_stream).await;
 }
 
-pub fn open_log_without_cloexec(logname: &str) -> Result<OpenOptions, std::io::Error> {
+pub fn open_log(logname: &str) -> Result<std::fs::File, std::io::Error> {
 
     // Open a log
-    let log = OpenOptions::new()
+    return OpenOptions::new()
         .truncate(true)
         .read(true)
         .create(true)
         .write(true)
-        .open(logname)
-        .unwrap();
+        .open(logname);
+}
 
-    // unset the FD_CLOEXEC flag on the stdout, and stderr
-    let nflags = fcntl(log.as_raw_fd(), nix::fcntl::FcntlArg::F_GETFD).unwrap();
+pub fn unset_cloexec(fd: i32) -> Result<(), std::io::Error> {
+
+    // unset the FD_CLOEXEC flag on the fd
+    let nflags = fcntl(fd, nix::fcntl::FcntlArg::F_GETFD).unwrap();
     let mut flags  = nix::fcntl::FdFlag::from_bits_truncate(nflags);
     flags.remove(nix::fcntl::FdFlag::FD_CLOEXEC);
-    fcntl(log.as_raw_fd(), nix::fcntl::FcntlArg::F_SETFD(flags)).unwrap();
+    fcntl(fd, nix::fcntl::FcntlArg::F_SETFD(flags)).unwrap();
 
-    return Ok(log);
+    return Ok(());
 }
 
 
@@ -666,12 +668,14 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
             //println!("Child redirected");
 
             // Open a log
-            let stdoutlog = open_log_without_cloexec("child_stdout.log");
+            let stdoutlog = open_log("child_stdout.log").unwrap();
             let _out_redirect = Redirect::stdout(stdoutlog).unwrap();
+            unset_cloexec(1).unwrap();
 
             // Log for stderr
-            let stdoutlog = open_log_without_cloexec("child_stderr.log")
-            let _err_redirect = Redirect::stderr(log).unwrap();
+            let stderrlog = open_log("child_stderr.log").unwrap();
+            let _err_redirect = Redirect::stderr(stderrlog).unwrap();
+            unset_cloexec(2).unwrap();
 
             /* create a new network namespace... BEFORE initializing runtime */
             /* the runtime may call clone(2), which if not unshared() would  */
