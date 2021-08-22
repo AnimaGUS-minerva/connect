@@ -33,6 +33,7 @@ use tokio::io::AsyncReadExt;
 use std::io::ErrorKind;
 use std::process::{ExitStatus};
 use tokio::process::{Command};
+use std::process::Stdio;
 use crate::openswanwhack;
 
 //use crate::dull::DullInterface;
@@ -137,7 +138,14 @@ impl OpenswanWhackInterface {
         Command::new("modprobe")
             .arg("af_key").status().await.unwrap();
 
+        //eprintln!("Waiting for openswan start at pid {}\n", nix::unistd::getpid());
+        //sleep(Duration::from_millis(20000)).await;  // 2s delay
+
+        eprintln!("Starting Openswan\n");
         let result = Command::new("/usr/local/libexec/ipsec/pluto")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::inherit())
             .arg("--ctlbase")
             .arg("/run/acp/pluto")    // .ctl is implied
             .arg("--stderrlog")

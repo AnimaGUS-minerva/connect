@@ -31,7 +31,9 @@ use crate::control::DebugOptions;
 use crate::openswan;
 
 use nix::unistd::*;
+use nix::fcntl::fcntl;
 use nix::sched::unshare;
+use std::os::unix::io::AsRawFd;
 //use nix::sched::setns;
 use nix::sched::CloneFlags;
 use std::os::unix::net::UnixStream;
@@ -410,6 +412,7 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
         let addr = SocketAddr::new(0, mgroup_flags);
         // Said address is bound so new conenctions and thus new message broadcasts can be received.
         connection.socket_mut().bind(&addr).expect("failed to bind");
+        //connection.socket_mut().as_raw_fd().set_close_on_exec(false)?;
         rt.spawn(connection);
 
         child_lo_up(&handle).await;
@@ -612,6 +615,27 @@ async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream) {
     process_control(childinfo, parent_stream).await;
 }
 
+pub fn open_log_without_cloexec(logname: &str) -> Result<OpenOptions, std::io::Error> {
+
+    // Open a log
+    let log = OpenOptions::new()
+        .truncate(true)
+        .read(true)
+        .create(true)
+        .write(true)
+        .open(logname)
+        .unwrap();
+
+    // unset the FD_CLOEXEC flag on the stdout, and stderr
+    let nflags = fcntl(log.as_raw_fd(), nix::fcntl::FcntlArg::F_GETFD).unwrap();
+    let mut flags  = nix::fcntl::FdFlag::from_bits_truncate(nflags);
+    flags.remove(nix::fcntl::FdFlag::FD_CLOEXEC);
+    fcntl(log.as_raw_fd(), nix::fcntl::FcntlArg::F_SETFD(flags)).unwrap();
+
+    return Ok(log);
+}
+
+
 pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
 
     //println!("daemon start");
@@ -631,7 +655,7 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
             // close the childfd in the parent
             //pair.1.close().unwrap();
 
-            println!("Hermes started new network namespace: {}", child);
+            println!("Hermes started new DULL network namespace: {}", child);
             return Ok(dull);
         }
         ForkResult::Child => {
@@ -642,22 +666,11 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
             //println!("Child redirected");
 
             // Open a log
-            let log = OpenOptions::new()
-                .truncate(true)
-                .read(true)
-                .create(true)
-                .write(true)
-                .open("child_stdout.log")
-                .unwrap();
-            let _out_redirect = Redirect::stdout(log).unwrap();
+            let stdoutlog = open_log_without_cloexec("child_stdout.log");
+            let _out_redirect = Redirect::stdout(stdoutlog).unwrap();
+
             // Log for stderr
-            let log = OpenOptions::new()
-                .truncate(true)
-                .read(true)
-                .create(true)
-                .write(true)
-                .open("child_stderr.log")
-                .unwrap();
+            let stdoutlog = open_log_without_cloexec("child_stderr.log")
             let _err_redirect = Redirect::stderr(log).unwrap();
 
             /* create a new network namespace... BEFORE initializing runtime */
