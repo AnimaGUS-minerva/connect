@@ -36,12 +36,12 @@ cc = "1.0"
 
 [dev-dependencies]
 tokio-test    = "0.4.2"
-hex-literal   = { version = "0.3.0" }
+hex-literal   = { version = "0.3.3" }
 
 [patch.crates-io]
 netlink-proto = { git = "https://github.com/little-dude/netlink.git" }
 rtnetlink     = { git = "https://github.com/little-dude/netlink.git", features = [ "tokio_socket" ] }
-hex-literal   = { git = "https://github.com/AnimaGUS-minerva/utils.git ", branch = "allow-comments-in-hex" }
+hex-literal   = { git = "https://github.com/AnimaGUS-minerva/utils.git", branch = "allow-hash-comments-in-hex" }
 
 
 
