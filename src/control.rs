@@ -65,28 +65,9 @@ pub enum DullControl {
     ChildReady
 }
 
-pub fn encode_msg(thing: &DullControl) -> Vec<u8> {
-    // encode it in CBOR.
-    return to_vec(&thing).unwrap();
-}
-
-pub fn decode_msg(msg: &[u8]) -> DullControl {
-    // decode it from CBOR.
-    return from_slice(msg).unwrap();
-}
-
 pub fn send_dull(_dull: &Dull, _thing: &DullControl) -> Result<bool, Error> {
     println!("send dull");
     return Ok(true);
-}
-
-pub async fn write_control(writer: &mut (dyn AsyncWrite + Unpin), data: &DullControl) -> Result<(), std::io::Error> {
-
-    let encoded = &encode_msg(data);
-    let len     = encoded.len();
-    let veclen = to_vec(&len).unwrap();
-    writer.write_all(&veclen).await.unwrap();
-    return writer.write_all(encoded).await;
 }
 
 fn from_slice_limit<'a, T>(slice: &'a [u8]) -> Result<(T, u32), serde_cbor::Error>
@@ -116,41 +97,53 @@ impl ControlStream {
         }
     }
 
-    pub async fn write_control(self: &mut Self, data: &DullControl) -> Result<(), std::io::Error> {
+    pub fn encode_msg(thing: &DullControl) -> Vec<u8> {
+        // encode it in CBOR.
+        return to_vec(&thing).unwrap();
+    }
 
-        let encoded = &encode_msg(data);
+    pub fn decode_msg(msg: &[u8]) -> DullControl {
+        // decode it from CBOR.
+        return from_slice(msg).unwrap();
+    }
+
+    pub async fn write_control(writer: &mut (dyn AsyncWrite + Unpin), data: &DullControl) -> Result<(), std::io::Error> {
+
+        let mut veclenbuf: [u8; 4] = [0; 4];
+        let encoded = &Self::encode_msg(data);
         let len     = encoded.len();
-        let veclen = to_vec(&len).unwrap();
-        self.writer.write_all(&veclen).await.unwrap();
-        return self.writer.write_all(encoded).await;
+        let veclen  = to_vec(&len).unwrap();
+        let mut i = 0;
+        for byte in veclen {
+            veclenbuf[i] = byte;
+            i = i+1;
+        }
+        writer.write_all(&veclenbuf).await.unwrap();
+        return writer.write_all(encoded).await;
     }
 
-}
+    pub async fn read_control(reader: &mut (dyn AsyncRead + Unpin)) -> Result<DullControl, std::io::Error> {
+        let mut control_buffer = [0; 256];
 
+        let mut n = 0;
+        while n == 0 {
 
-pub async fn read_control(reader: &mut (dyn AsyncRead + Unpin)) -> Result<DullControl, std::io::Error> {
-    let mut control_buffer = [0; 256];
+            let mut handle_size = reader.take(4);
+            let sizevec         = handle_size.read(&mut control_buffer[..]).await?;
+            let (size, _taken)  = from_slice_limit(&control_buffer[0..sizevec]).unwrap();
 
-    let mut n = 0;
-    while n == 0 {
+            println!("told to read {} bytes", size);
+            // size is number of bytes to read now.
+            let mut handle = reader.take(size);
 
-        let sizevec = reader.read(&mut control_buffer[..]).await?;
-        let (size, _taken) = from_slice_limit(&control_buffer[0..sizevec]).unwrap();
+            n = handle.read(&mut control_buffer[..]).await?;
+            println!("Got a message of length {}", n);
+        }
 
-        // size is number of bytes to read now.
-        let mut handle = reader.take(size);
+        let dc = decode_msg(&control_buffer[0..n]);
 
-        // taken, is the number of bytes left in the buffer.
-        //if size > taken {
-        //}
-
-        n = handle.read(&mut control_buffer[..]).await?;
-        //println!("Got a message of length {}", n);
+        return Ok(dc);
     }
-
-    let dc = decode_msg(&control_buffer[0..n]);
-
-    return Ok(dc);
 }
 
 pub async fn write_child_ready(mut writer: &mut tokio::net::UnixStream) -> Result<(), std::io::Error> {
@@ -168,7 +161,7 @@ pub async fn write_child_ready(mut writer: &mut tokio::net::UnixStream) -> Resul
 
 #[cfg(test)]
 mod tests {
-    use super::{read_control,write_control, DullControl};
+    use super::{DullControl};
     use super::{encode_msg, from_slice, decode_msg};
     use super::{ControlStream, ErrorKind, UnixStream};
 
@@ -233,6 +226,7 @@ mod tests {
     }
 
     /* this function just helps the test case below, since tests can not do await */
+    #[allow(dead_code)]
     async fn read_write_admin_via_socket(data: &DullControl) -> Result<DullControl, std::io::Error> {
 
         let (mut reader, mut writer) = tokio::io::duplex(256);
@@ -241,6 +235,7 @@ mod tests {
         return read_control(&mut reader).await;
     }
 
+    #[allow(dead_code)]
     //#[test]
     fn test_write_read_admin_via_socket() {
         let data = DullControl::AdminDown { interface_index: 5u32 };
