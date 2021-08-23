@@ -16,7 +16,7 @@ moz_cbor   = { git = "https://github.com/AnimaGUS-minerva/cbor-rust.git", branch
 nix        = { version = "0.19" }
 netlink-packet-route = { version = "*" }
 rtnetlink     = { version = "0.7" }
-netlink-proto = { version = "0.6.0", features = [ "tokio_socket" ] }
+netlink-proto = { version = "0.7.0", features = [ "tokio_socket" ] }
 netlink-packet-sock-diag = "*"
 async-trait   = "0.1.48"
 tokio         = { version = "1.7",    features = [ "macros", "io-util", "time", "process", "sync", "signal", "rt-multi-thread"] }
@@ -39,8 +39,8 @@ tokio-test    = "0.4.2"
 hex-literal   = { version = "0.3.3" }
 
 [patch.crates-io]
-netlink-proto = { git = "https://github.com/little-dude/netlink.git" }
-rtnetlink     = { git = "https://github.com/little-dude/netlink.git", features = [ "tokio_socket" ] }
+#netlink-proto = { git = "https://github.com/little-dude/netlink.git" }
+#rtnetlink     = { git = "https://github.com/little-dude/netlink.git", features = [ "tokio_socket" ] }
 hex-literal   = { git = "https://github.com/AnimaGUS-minerva/utils.git", branch = "allow-hash-comments-in-hex" }
 
 

@@ -28,8 +28,9 @@ use crate::dullgrasp;
 use crate::dullgrasp::GraspDaemon;
 use crate::adjacency::Adjacency;
 use crate::control::DebugOptions;
-use crate::openswan;
+use crate::control::ControlStream;
 
+use crate::openswan;
 use nix::unistd::*;
 use nix::fcntl::fcntl;
 use nix::sched::unshare;
@@ -81,17 +82,24 @@ pub struct DullInit {
 }
 
 /* This structure is present in the parent to represent the DULL */
-pub struct Dull {
+pub struct Dull<'a> {
     pub debug:         DebugOptions,
-    pub child_stream:  tokio::net::UnixStream,
+    pub child_socket:  tokio::net::UnixStream,
+    pub child_stream:  Option<control::ControlStream<'a>>,
     pub dullpid:       Pid
 }
 
-impl Dull {
-    pub fn from_dull_init(init: DullInit) -> Dull {
-        Dull { child_stream: tokio::net::UnixStream::from_std(init.child_io).unwrap(),
-               debug:        DebugOptions::empty(),
-               dullpid:      init.dullpid }
+impl Dull<'_> {
+    pub fn from_dull_init<'a>(init: DullInit) -> Box<Dull<'a>> {
+        let c_socket = tokio::net::UnixStream::from_std(init.child_io).unwrap();
+
+        let mut d1 = Box::new(Dull { child_socket: c_socket,
+                                     child_stream: None,
+                                     debug:        DebugOptions::empty(),
+                                     dullpid:      init.dullpid });
+
+        d1.child_stream = Some(control::ControlStream::parent(&d1.child_socket));
+        return d1;
     }
 }
 
@@ -479,10 +487,11 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
     Ok(listenhandle)
 }
 
-pub async fn process_control(child: Arc<Mutex<DullChild>>, mut child_sock: tokio::net::UnixStream) {
+pub async fn process_control(child: Arc<Mutex<DullChild>>,
+                             mut child_stream: control::ControlStream <'_>) {
     loop {
         println!("DULL process reading control...");
-        if let Ok(thing) = control::read_control(&mut child_sock).await {
+        if let Ok(thing) = child_stream.read_control().await {
             match thing {
                 control::DullControl::Exit => {
                     println!("DULL process shutting down pluto");
@@ -586,7 +595,8 @@ async fn ignore_sigint(childinfo: &Arc<Mutex<DullChild>>) {
 }
 
 async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream) {
-    let mut parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
+    let parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
+    let mut cs = ControlStream::child(&parent_stream);
 
     ignore_sigint(&childinfo).await;
 
@@ -607,12 +617,12 @@ async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream) {
 
     /* let parent know that we ready */
     println!("tell parent, child is ready");
-    control::write_child_ready(&mut parent_stream).await.unwrap();
+    cs.write_child_ready().await.unwrap();
 
     /* listen to commands from the parent */
     println!("child waiting for commands");
 
-    process_control(childinfo, parent_stream).await;
+    process_control(childinfo, cs).await;
 }
 
 pub fn open_log(logname: &str) -> Result<std::fs::File, std::io::Error> {

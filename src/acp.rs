@@ -25,6 +25,7 @@ use gag::Redirect;
 use std::sync::Arc;
 use crate::control;
 use crate::control::DebugOptions;
+use crate::control::ControlStream;
 use crate::dull::IfIndex;
 use crate::dull::child_lo_up;
 
@@ -74,17 +75,26 @@ pub struct AcpInit {
 }
 
 /* This structure is present in the parent to represent the ACP */
-pub struct Acp {
+pub struct Acp<'a> {
     pub debug:         DebugOptions,
-    pub child_stream:  tokio::net::UnixStream,
+    pub child_socket:  tokio::net::UnixStream,
+    pub child_stream:  Option<control::ControlStream<'a>>,
     pub acppid:        Pid
 }
 
-impl Acp {
-    pub fn from_acp_init(init: AcpInit) -> Acp {
-        Acp { child_stream: tokio::net::UnixStream::from_std(init.child_io).unwrap(),
-               debug:        DebugOptions::empty(),
-               acppid:       init.dullpid }
+impl Acp<'_> {
+    pub fn from_acp_init<'a>(init: AcpInit) -> Acp<'a> {
+        let c_socket = tokio::net::UnixStream::from_std(init.child_io).unwrap();
+
+        let mut a1 = Acp { child_socket: c_socket,
+                           child_stream: None,
+                           debug:        DebugOptions::empty(),
+                           acppid:       init.dullpid };
+
+        let c_stream    = control::ControlStream::parent(&a1.child_socket);
+        a1.child_stream = Some(c_stream);
+
+        return a1;
     }
 }
 
@@ -392,9 +402,9 @@ async fn listen_network(childinfo: &Arc<Mutex<AcpChild>>) -> Result<tokio::task:
     Ok(listenhandle)
 }
 
-pub async fn process_control(child: Arc<Mutex<AcpChild>>, mut child_sock: tokio::net::UnixStream) {
+pub async fn process_control(child: Arc<Mutex<AcpChild>>, mut cs: ControlStream <'_>) {
     loop {
-        if let Ok(thing) = control::read_control(&mut child_sock).await {
+        if let Ok(thing) = cs.read_control().await {
             match thing {
                 control::DullControl::Exit => {
                     println!("ACP process exiting");
@@ -489,7 +499,8 @@ async fn ignore_sigint(childinfo: &Arc<Mutex<AcpChild>>) {
 }
 
 async fn child_processing(childinfo: Arc<Mutex<AcpChild>>, sock: UnixStream) {
-    let mut parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
+    let parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
+    let mut cs = ControlStream::child(&parent_stream);
 
     ignore_sigint(&childinfo).await;
 
@@ -503,7 +514,7 @@ async fn child_processing(childinfo: Arc<Mutex<AcpChild>>, sock: UnixStream) {
 
     /* let parent know that we ready */
     println!("acp tell parent, child is ready");
-    control::write_child_ready(&mut parent_stream).await.unwrap();
+    cs.write_child_ready().await.unwrap();
 
     // start up RFC6550/RPL daemon, Unstrung
     Command::new("/home/mcr/u")
@@ -512,7 +523,7 @@ async fn child_processing(childinfo: Arc<Mutex<AcpChild>>, sock: UnixStream) {
 
     /* listen to commands from the parent */
     println!("acp child waiting for commands");
-    process_control(childinfo, parent_stream).await;
+    process_control(childinfo, cs).await;
 }
 
 pub fn namespace_daemon() -> Result<AcpInit, std::io::Error> {

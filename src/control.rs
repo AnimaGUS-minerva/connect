@@ -26,9 +26,11 @@ use serde::de;
 use std::io::{Error, ErrorKind};
 //use tokio_serde::formats::*;
 //use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
-use std::os::unix::net::UnixStream;
-use tokio::io::{AsyncWrite, AsyncRead, AsyncWriteExt, AsyncReadExt};
-use tokio::io::DuplexStream;
+use tokio::net::UnixStream;
+use tokio::net::unix::{ReadHalf, WriteHalf};
+use tokio::io::{AsyncWriteExt, AsyncReadExt};
+//use tokio::io::{AsyncRead, AsyncWrite};
+//use tokio::io::DuplexStream;
 
 use crate::dull::Dull;
 
@@ -81,19 +83,34 @@ where
     Ok((value, remaining))
 }
 
-#[derive(Debug)]
-struct ControlStream {
-    reader: DuplexStream,
-    writer: DuplexStream,
+//#[derive(Debug)]
+pub struct ControlStream<'a> {
+//    sock:   UnixStream,
+    reader: ReadHalf<'a>,
+    writer: WriteHalf<'a>
+//    reader: DuplexStream,
+    //    writer: DuplexStream
+//    reader: Box<(dyn AsyncRead  + Unpin)>,
+//    writer: Box<(dyn AsyncWrite + Unpin)>
 }
 
-impl ControlStream {
-    pub fn empty() -> Self {
-        let (client, server) = tokio::io::duplex(256);
-
+impl ControlStream<'_> {
+    pub fn child<'a>(mut sock: &'a UnixStream) -> ControlStream<'a> {
+        let (r, w) = sock.split();
         ControlStream {
-            reader: client,
-            writer: server
+//            sock:   sock,
+            reader: r,
+            writer: w
+        }
+    }
+
+    // mostly identical to client, but we'll see!
+    pub fn parent<'a>(mut sock: &'a UnixStream) -> ControlStream<'a> {
+        let (r, w) = sock.split();
+        ControlStream {
+//            sock:   sock,
+            reader: r,
+            writer: w
         }
     }
 
@@ -107,7 +124,7 @@ impl ControlStream {
         return from_slice(msg).unwrap();
     }
 
-    pub async fn write_control(writer: &mut (dyn AsyncWrite + Unpin), data: &DullControl) -> Result<(), std::io::Error> {
+    pub async fn write_control(self: &mut Self, data: &DullControl) -> Result<(), std::io::Error> {
 
         let mut veclenbuf: [u8; 4] = [0; 4];
         let encoded = &Self::encode_msg(data);
@@ -118,52 +135,56 @@ impl ControlStream {
             veclenbuf[i] = byte;
             i = i+1;
         }
-        writer.write_all(&veclenbuf).await.unwrap();
-        return writer.write_all(encoded).await;
+        self.writer.write_all(&veclenbuf).await.unwrap();
+        return self.writer.write_all(encoded).await;
     }
 
-    pub async fn read_control(reader: &mut (dyn AsyncRead + Unpin)) -> Result<DullControl, std::io::Error> {
+    pub async fn read_control(self: &mut Self) -> Result<DullControl, std::io::Error> {
+        // let reader : &mut (dyn AsyncRead + Unpin)
+        let mut size_buffer    = [0; 4];
         let mut control_buffer = [0; 256];
 
         let mut n = 0;
         while n == 0 {
 
-            let mut handle_size = reader.take(4);
-            let sizevec         = handle_size.read(&mut control_buffer[..]).await?;
-            let (size, _taken)  = from_slice_limit(&control_buffer[0..sizevec]).unwrap();
+            //let handle_size     = &mut self.reader.take(4);
+            let size_n   = self.reader.read(&mut size_buffer[..]).await?;
+            let (size, _taken)  = from_slice_limit(&size_buffer[0..size_n]).unwrap();
 
             println!("told to read {} bytes", size);
             // size is number of bytes to read now.
-            let mut handle = reader.take(size);
+            n = self.reader.read(&mut control_buffer[0..size]).await?;
 
-            n = handle.read(&mut control_buffer[..]).await?;
             println!("Got a message of length {}", n);
         }
 
-        let dc = decode_msg(&control_buffer[0..n]);
+        let dc = Self::decode_msg(&control_buffer[0..n]);
 
         return Ok(dc);
     }
-}
 
-pub async fn write_child_ready(mut writer: &mut tokio::net::UnixStream) -> Result<(), std::io::Error> {
+    pub async fn write_child_ready(self: &mut Self) -> Result<(), std::io::Error> {
+        // mut writer: &mut tokio::net::UnixStream
+        let result = self.write_control(&DullControl::ChildReady).await;
 
-    let result = write_control(&mut writer, &DullControl::ChildReady).await;
-
-    match result  {
-        Err(e) => match e.kind() {
-            ErrorKind::BrokenPipe  => { return Ok(()); }, // maybe die?
-            _                      => { return Ok(()); }  // maybe error.
+        match result  {
+            Err(e) => match e.kind() {
+                ErrorKind::BrokenPipe  => { return Ok(()); }, // maybe die?
+                _                      => { return Ok(()); }  // maybe error.
+            }
+            _ => { return Ok(()); }
         }
-        _ => { return Ok(()); }
     }
+
+
 }
 
 #[cfg(test)]
 mod tests {
     use super::{DullControl};
-    use super::{encode_msg, from_slice, decode_msg};
-    use super::{ControlStream, ErrorKind, UnixStream};
+    use super::from_slice;
+    use super::{ControlStream, ErrorKind};
+    use tokio::net::UnixStream;
 
     macro_rules! aw {
         ($e:expr) => {
@@ -171,10 +192,18 @@ mod tests {
         };
     }
 
+    async fn make_parent_child_streams<'a>(parent: &'a UnixStream, child: &'a UnixStream) -> (ControlStream<'a>, ControlStream<'a>) {
+        let pfs = ControlStream::parent(&parent);
+        let cfs = ControlStream::child(&child);
+        return (cfs, pfs);
+    }
+
     async fn do_read_write_control_stream() {
-        let mut fs = ControlStream::empty();
+        let (parent,child)  = UnixStream::pair().unwrap();
+        let (_cfs, mut pfs) = make_parent_child_streams(&parent, &child).await;
+
         let ex = DullControl::Exit;
-        fs.write_control(&ex).await.unwrap();
+        pfs.write_control(&ex).await.unwrap();
     }
 
     #[test]
@@ -186,7 +215,7 @@ mod tests {
     fn test_encode_decode_quit() {
         let data = DullControl::Exit;
 
-        let e = encode_msg(&data);
+           let e = ControlStream::encode_msg(&data);
 
         // decode it.
         let d: DullControl = from_slice(&e).unwrap();
@@ -201,10 +230,10 @@ mod tests {
         //let pipe =
 
         // encode it.
-        let e = encode_msg(&data);
+        let e = ControlStream::encode_msg(&data);
 
         // decode it.
-        let d: DullControl = decode_msg(&e);
+        let d: DullControl = ControlStream::decode_msg(&e);
 
         assert_eq!(d, data);
     }
@@ -215,12 +244,12 @@ mod tests {
         let data2 = DullControl::AdminDown { interface_index: 6u32 };
 
         // encode two things
-        let mut e1 = encode_msg(&data1);
-        let e2 = encode_msg(&data2);
+        let mut e1 = ControlStream::encode_msg(&data1);
+        let e2 = ControlStream::encode_msg(&data2);
         e1.extend(e2);
 
         // decode it.
-        let d: DullControl = decode_msg(&e1);
+        let d: DullControl = ControlStream::decode_msg(&e1);
 
         assert_eq!(d, data1);
     }
@@ -228,11 +257,11 @@ mod tests {
     /* this function just helps the test case below, since tests can not do await */
     #[allow(dead_code)]
     async fn read_write_admin_via_socket(data: &DullControl) -> Result<DullControl, std::io::Error> {
+        let (parent,child)  = UnixStream::pair().unwrap();
+        let (mut cfs, mut pfs) = make_parent_child_streams(&parent, &child).await;
 
-        let (mut reader, mut writer) = tokio::io::duplex(256);
-
-        write_control(&mut writer, data).await.unwrap();
-        return read_control(&mut reader).await;
+        pfs.write_control(data).await.unwrap();
+        return cfs.read_control().await;
     }
 
     #[allow(dead_code)]
@@ -244,12 +273,10 @@ mod tests {
     }
 
     async fn write_admin_via_closed_socket(data: &DullControl) -> Result<(), std::io::Error> {
-        let pair = UnixStream::pair().unwrap();
+        let (parent,child)  = UnixStream::pair().unwrap();
+        let (_cfs, mut pfs) = make_parent_child_streams(&parent, &child).await;
 
-        //let reader = tokio::net::UnixStream::from_std(pair.1).unwrap();
-        let mut writer = tokio::net::UnixStream::from_std(pair.0).unwrap();
-
-        match write_control(&mut writer, data).await {
+        match pfs.write_control(data).await {
             Err(e) => match e.kind() {
                 ErrorKind::BrokenPipe  => { return Ok(()); },
                 _                      => { return Err(e); }
