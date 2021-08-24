@@ -226,7 +226,7 @@ mod tests {
     fn test_encode_decode_admindown() {
         let data = DullControl::AdminDown { interface_index: 5u32 };
 
-        //let pipe =
+        //note that encode/decode can only handle a single message
 
         // encode it.
         let e = ControlStream::encode_msg(&data);
@@ -237,20 +237,26 @@ mod tests {
         assert_eq!(d, data);
     }
 
-    #[test]
-    fn test_decode_multi_message() {
+    async fn do_decode_multi_message() {
         let data1 = DullControl::AdminDown { interface_index: 5u32 };
         let data2 = DullControl::AdminDown { interface_index: 6u32 };
 
-        // encode two things
-        let mut e1 = ControlStream::encode_msg(&data1);
-        let e2 = ControlStream::encode_msg(&data2);
-        e1.extend(e2);
+        // setup the pipes for things.
+        let (parent, child)  = UnixStream::pair().unwrap();
+        let (mut cfs, mut pfs) = make_parent_child_streams(parent, child).await;
+
+        pfs.write_control(&data1).await.unwrap();
+        pfs.write_control(&data2).await.unwrap();
 
         // decode it.
-        let d: DullControl = ControlStream::decode_msg(&e1);
+        let d: DullControl = cfs.read_control().await.unwrap();
 
         assert_eq!(d, data1);
+    }
+
+    #[test]
+    fn test_decode_multi_message() {
+        aw!(do_decode_multi_message());
     }
 
     /* this function just helps the test case below, since tests can not do await */
