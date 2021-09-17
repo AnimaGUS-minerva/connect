@@ -31,6 +31,7 @@ use crate::dull::child_lo_up;
 
 use nix::unistd::*;
 use nix::sched::unshare;
+use std::process::Stdio;
 //use nix::sched::setns;
 use nix::sched::CloneFlags;
 use std::os::unix::net::UnixStream;
@@ -420,6 +421,9 @@ pub async fn process_control(child: Arc<Mutex<AcpChild>>, mut cs: ControlStream)
                     }
 
                     Command::new("sbin/sunshine -K")
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::inherit())
+                        .stderr(Stdio::inherit())
                         .status()
                         .expect("Unstrung kill");
 
