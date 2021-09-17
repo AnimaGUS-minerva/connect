@@ -150,11 +150,11 @@ impl ControlStream {
             let size_n   = self.reader.read(&mut size_buffer[..]).await?;
             let (size, _taken)  = from_slice_limit(&size_buffer[0..size_n]).unwrap();
 
-            println!("told to read {} bytes", size);
+            //println!("told to read {} bytes", size);
             // size is number of bytes to read now.
             n = self.reader.read(&mut control_buffer[0..size]).await?;
 
-            println!("Got a message of length {}", n);
+            //println!("Got a message of length {}", n);
         }
 
         let dc = Self::decode_msg(&control_buffer[0..n]);
