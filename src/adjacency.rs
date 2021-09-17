@@ -195,6 +195,8 @@ impl Adjacency {
 
                 OpenswanWhackInterface::up_adjacency(&osw_name).await.unwrap();
             }
+        } else {
+            println!("Auto-Up is set to false");
         }
 
         Ok(())
