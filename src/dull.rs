@@ -18,7 +18,7 @@
 extern crate nix;
 extern crate tokio;
 
-use std::fs::OpenOptions;
+//use std::fs::OpenOptions;
 //use std::fs::File;
 use gag::Redirect;
 
@@ -29,10 +29,11 @@ use crate::dullgrasp::GraspDaemon;
 use crate::adjacency::Adjacency;
 use crate::control::DebugOptions;
 use crate::control::ControlStream;
+use crate::control::{open_log, unset_cloexec};
 
 use crate::openswan;
 use nix::unistd::*;
-use nix::fcntl::fcntl;
+//use nix::fcntl::fcntl;
 use nix::sched::unshare;
 //use std::os::unix::io::AsRawFd;
 //use nix::sched::setns;
@@ -621,29 +622,6 @@ async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream) {
 
     process_control(childinfo, cs).await;
 }
-
-pub fn open_log(logname: &str) -> Result<std::fs::File, std::io::Error> {
-
-    // Open a log
-    return OpenOptions::new()
-        .truncate(true)
-        .read(true)
-        .create(true)
-        .write(true)
-        .open(logname);
-}
-
-pub fn unset_cloexec(fd: i32) -> Result<(), std::io::Error> {
-
-    // unset the FD_CLOEXEC flag on the fd
-    let nflags = fcntl(fd, nix::fcntl::FcntlArg::F_GETFD).unwrap();
-    let mut flags  = nix::fcntl::FdFlag::from_bits_truncate(nflags);
-    flags.remove(nix::fcntl::FdFlag::FD_CLOEXEC);
-    fcntl(fd, nix::fcntl::FcntlArg::F_SETFD(flags)).unwrap();
-
-    return Ok(());
-}
-
 
 pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
 

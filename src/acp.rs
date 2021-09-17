@@ -18,7 +18,6 @@
 extern crate nix;
 extern crate tokio;
 
-use std::fs::OpenOptions;
 use crate::sysctl::Sysctl;
 use gag::Redirect;
 
@@ -28,6 +27,7 @@ use crate::control::DebugOptions;
 use crate::control::ControlStream;
 use crate::dull::IfIndex;
 use crate::dull::child_lo_up;
+use crate::control::{open_log, unset_cloexec};
 
 use nix::unistd::*;
 use nix::sched::unshare;
@@ -551,23 +551,14 @@ pub fn namespace_daemon() -> Result<AcpInit, std::io::Error> {
         ForkResult::Child => {
 
             // Open a log
-            let log = OpenOptions::new()
-                .truncate(true)
-                .read(true)
-                .create(true)
-                .write(true)
-                .open("acp_stdout.log")
-                .unwrap();
-            let _out_redirect = Redirect::stdout(log).unwrap();
+            let stdoutlog = open_log("acp_stdout.log").unwrap();
+            let _out_redirect = Redirect::stdout(stdoutlog).unwrap();
+            unset_cloexec(1).unwrap();
+
             // Log for stderr
-            let log = OpenOptions::new()
-                .truncate(true)
-                .read(true)
-                .create(true)
-                .write(true)
-                .open("acp_stderr.log")
-                .unwrap();
-            let _err_redirect = Redirect::stderr(log).unwrap();
+            let stderrlog = open_log("acp_stderr.log").unwrap();
+            let _err_redirect = Redirect::stderr(stderrlog).unwrap();
+            unset_cloexec(2).unwrap();
 
             /* create a new network namespace... BEFORE initializing runtime */
             /* the runtime may call clone(2), which if not unshared() would  */

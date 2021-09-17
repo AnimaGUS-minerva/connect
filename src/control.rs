@@ -31,6 +31,8 @@ use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::io::{AsyncWriteExt, AsyncReadExt};
 //use tokio::io::{AsyncRead, AsyncWrite};
 //use tokio::io::DuplexStream;
+use std::fs::OpenOptions;
+use nix::fcntl::fcntl;
 
 use crate::dull::Dull;
 
@@ -174,9 +176,31 @@ impl ControlStream {
             _ => { return Ok(()); }
         }
     }
-
-
 }
+
+pub fn open_log(logname: &str) -> Result<std::fs::File, std::io::Error> {
+
+    // Open a log
+    return OpenOptions::new()
+        .truncate(true)
+        .read(true)
+        .create(true)
+        .write(true)
+        .open(logname);
+}
+
+pub fn unset_cloexec(fd: i32) -> Result<(), std::io::Error> {
+
+    // unset the FD_CLOEXEC flag on the fd
+    let nflags = fcntl(fd, nix::fcntl::FcntlArg::F_GETFD).unwrap();
+    let mut flags  = nix::fcntl::FdFlag::from_bits_truncate(nflags);
+    flags.remove(nix::fcntl::FdFlag::FD_CLOEXEC);
+    fcntl(fd, nix::fcntl::FcntlArg::F_SETFD(flags)).unwrap();
+
+    return Ok(());
+}
+
+
 
 #[cfg(test)]
 mod tests {
