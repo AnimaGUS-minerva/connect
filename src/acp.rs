@@ -278,6 +278,9 @@ async fn gather_link_info(lacp: &Arc<Mutex<AcpChild>>, lm: LinkMessage) -> Resul
 
     if data.debug.debug_namespaces {
         Command::new("ip")
+            .stdin(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
             .arg("link")
             .arg("ls")
             .status()

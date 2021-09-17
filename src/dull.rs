@@ -518,6 +518,7 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>,
                     let cl = child.lock().await;
                     let mut dl = cl.data.lock().await;
                     dl.auto_up_adj = auto_up;
+                    println!("DULL automatic tunnel enable: {}", auto_up);
                 }
                 control::DullControl::GraspDebug { grasp_debug: deb } => {
                     println!("Debug set to {}", deb);
