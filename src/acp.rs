@@ -519,6 +519,9 @@ async fn child_processing(childinfo: Arc<Mutex<AcpChild>>, sock: UnixStream) {
 
     // start up RFC6550/RPL daemon, Unstrung
     Command::new("/home/mcr/u")
+        .stdin(Stdio::null())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
         .status()
         .expect("Unstrung start");
 
