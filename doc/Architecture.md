@@ -89,3 +89,38 @@ Delaying the initiation at the GRASP DULL level by a number of miliseconds given
 A mis-feature in Openswan is that when told to do initiate a connection: there needs to be more checking that the connection isn't already up.
 
 A problem with the simultaenous initiation is that if the CHILD SA to be deleted is the second one that was made, then it is a challenge to make sure that the policy from the first connection is restored correctly.  Normally, new SAs replace older ones and there isn't a problem.
+
+BRSKI Join Proxy
+----------------
+
+This component is not yet implemented.
+It might be a thread within Hermes Connect, but it would be safer if it was another process that had no root permission in any container.
+
+The Join Proxy needs to run within the ACP namespace so that it can open sockets within the routed ACP namespace.
+
+It also needs to listen to GRASP M_FLOOD announcements from the Registrar to learn where the (set) of Registrars are in order to connect to them.  The task of listening to that may be taken on by the GRASP daemon with either some IPC to the Join Proxy, or more likely there will just be a file that is updated when the Registrar address changes.
+
+A challenge for this process is that it must listen to connections from Pledges within the DULL namespace.   This will be done by having the DULL daemon in Connect open one or more sockets within the DULL namespace, and then pass the sockets via Unix Domain socket to the Join Proxy.
+It is unclear whether a socket per interface will be necessary in order to properly bind the socket to the IPv6 LL address.
+
+The DULL Connect daemon will be responsible to sending out Pledge M\_FLOOD joins, which will be combined with ACP M\_FLOOD messages.
+
+BRSKI Pledge Client (Trenton)
+-----------------------------
+
+A key part of the mechanism is that it auto-enrolls using BRSKI (RFC8995).
+
+This requires presences of an IDevID keypair.
+
+If the host-certificate (LDevID) is missing, then the ACP M\_FLOOD messages are suppressed.
+The pledge client runs within the DULL namespace.
+
+Ideally, no private keys would be visible within the DULL namespace, but at present the pledge client and Openswan system need access to them.
+
+This will be replaced with ARM Platform Crypto API access at a later point, when mbedtls is incorporated.
+
+
+Full GRASP Daemon
+-----------------
+
+The full GRASP daemon runs within the ACP namespace.
