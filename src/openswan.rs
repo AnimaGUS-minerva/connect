@@ -202,12 +202,9 @@ impl OpenswanWhackInterface {
     pub fn encode_end_policy(v6: Ipv6Addr) -> BTreeMap<CborType, CborType> {
         let mut end_map: BTreeMap<CborType, CborType> = BTreeMap::new();
         end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_HOST_ADDR as u64),
-                       OpenswanWhackInterface::encode_v6_addr(v6));
-
-        /* rather than ::/0, use fe80::/64 */
-        let end_client = "fe80::".parse::<Ipv6Addr>().unwrap();
+                        OpenswanWhackInterface::encode_v6_addr(v6));
         end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CLIENT as u64),
-                        OpenswanWhackInterface::encode_v6_prefix(end_client, 64));
+                        OpenswanWhackInterface::encode_v6_prefix(Ipv6Addr::UNSPECIFIED, 0));
         end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HOST_PORT  as u64),
                         CborType::Integer(500));
         end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HAS_CLIENT as u64),
