@@ -15,7 +15,7 @@ serde_cbor = "0.11.1"
 moz_cbor   = { git = "https://github.com/AnimaGUS-minerva/cbor-rust.git", branch = "implement-strings" }
 nix        = { version = "0.19" }
 netlink-packet-route = { version = "*" }
-rtnetlink     = { version = "0.8" }
+rtnetlink     = { version = "0.9" }
 netlink-proto = { version = "*", features = [ "tokio_socket" ] }
 netlink-packet-sock-diag = "*"
 async-trait   = "0.1.48"
@@ -40,7 +40,13 @@ hex-literal   = { version = "0.3.3" }
 
 [patch.crates-io]
 #netlink-proto = { git = "https://github.com/little-dude/netlink.git" }
-#rtnetlink     = { git = "https://github.com/little-dude/netlink.git", features = [ "tokio_socket" ] }
+rtnetlink            = { path = "/ssw/projects/pandora/connect/netlink/rtnetlink", features = [ "tokio_socket" ] }
+netlink-packet-route = { path = "/ssw/projects/pandora/connect/netlink/netlink-packet-route" }
+netlink-packet-core  = { path = "/ssw/projects/pandora/connect/netlink/netlink-packet-core" }
+netlink-proto        = { path = "/ssw/projects/pandora/connect/netlink/netlink-proto" }
+netlink-sys          = { path = "/ssw/projects/pandora/connect/netlink/netlink-sys" }
+netlink-packet-utils = { path = "/ssw/projects/pandora/connect/netlink/netlink-packet-utils" }
+netlink-packet-sock-diag  = { path = "/ssw/projects/pandora/connect/netlink/netlink-packet-sock-diag" }
 hex-literal   = { git = "https://github.com/AnimaGUS-minerva/utils.git", branch = "allow-hash-comments-in-hex" }
 
 
