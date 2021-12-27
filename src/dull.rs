@@ -141,7 +141,7 @@ pub struct DullData {
 }
 
 pub async fn child_lo_up(handle: &Handle) {
-    let mut lo = handle.link().get().set_name_filter("lo".to_string()).execute();
+    let mut lo = handle.link().get().match_name("lo".to_string()).execute();
     if let Some(link) = lo.try_next().await.unwrap() {
         handle
             .link()

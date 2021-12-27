@@ -126,7 +126,7 @@ impl Adjacency {
 
         vtitun::create(&self.vti_iface, ifn.ifindex, laddr, raddr, vn).unwrap();
 
-        let mut vtiresult = handle.link().get().set_name_filter(self.vti_iface.clone()).execute();
+        let mut vtiresult = handle.link().get().match_name(self.vti_iface.clone()).execute();
         let vti_next = vtiresult.try_next().await;
         let vti_result = match vti_next {
             Err(repr) => { return Err(repr) },

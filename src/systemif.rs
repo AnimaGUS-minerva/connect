@@ -86,7 +86,7 @@ impl NetlinkInterface {
 
     pub async fn find_interface_ifindex(self: &NetlinkInterface,
                                         ifname: &String) -> Result<Option<IfIndex>, rtnetlink::Error> {
-        let mut ifentry = self.handle.link().get().set_name_filter(ifname.to_string()).execute();
+        let mut ifentry = self.handle.link().get().match_name(ifname.to_string()).execute();
         if let Some(link) = ifentry.try_next().await? {
             return Ok(Some(link.header.index));
         } else {
@@ -155,7 +155,7 @@ impl NetlinkManager for NetlinkInterface {
             }
         };
 
-        let mut dull0 = self.handle.link().get().set_name_filter(dname.clone()).execute();
+        let mut dull0 = self.handle.link().get().match_name(dname.clone()).execute();
         if let Some(link) = dull0.try_next().await? {
             self.handle
                 .link()
@@ -184,8 +184,8 @@ impl NetlinkManager for NetlinkInterface {
         return Ok(());   // WRONG
     }
 
-    async fn create_macvlan(self: &Self, _dullpid: Pid, _physif: IfIndex) -> Result<(), rtnetlink::Error> {
-        return Ok(())
+    async fn create_macvlan(self: &Self, dullpid: Pid, physif: IfIndex) -> Result<(), rtnetlink::Error> {
+        return Ok(());
     }
 }
 
