@@ -408,28 +408,28 @@ a1                                      # map(1)
    a6                                   # map(6)
       01                                # unsigned(1)
       73                                # text(19)
-         635f66656438616262615f6665313638383562 #
+         635f66656438616262615f6665313638383562 # c_fed8abba_fe16885b
       03                                # unsigned(3)
       ab                                # map(11)
          05                             # unsigned(5)
          65                             # text(5)
-            2563657274                  #
+            2563657274                  # %cert
          06                             # unsigned(6)
          6c                             # text(12)
-            686f7374636572742e70656d    #
+            686f7374636572742e70656d    # hostcert.pem
          07                             # unsigned(7)
          78 49                          # text(73)
-            44433d63612f44433d73616e64656c6d616e2f434e3d666f756e7461696e2d746573742e6578616d706c652e636f6d20556e737472756e6720466f756e7461696e20526f6f74204341 #
+            44433d63612f44433d73616e64656c6d616e2f434e3d666f756e7461696e2d746573742e6578616d706c652e636f6d20556e737472756e6720466f756e7461696e20526f6f74204341 # DC=ca/DC=sandelman/CN=fountain-test.example.com Unstrung Fountain Root CA
          0b                             # unsigned(11)
          d8 36                          # tag(54)
             50                          # bytes(16)
-               fe80000000000000609c62fffed8abba #
+               fe80000000000000609c62fffed8abba
          0e                             # unsigned(14)
          d8 36                          # tag(54)
             82                          # array(2)
                00                       # unsigned(0)
                50                       # bytes(16)
-                  00000000000000000000000000000000 #
+                  00000000000000000000000000000000
          0f                             # unsigned(15)
          18 ff                          # unsigned(255)
          10                             # unsigned(16)
@@ -446,20 +446,20 @@ a1                                      # map(1)
       a7                                # map(7)
          05                             # unsigned(5)
          63                             # text(3)
-            453d2a                      #
+            453d2a                      # E=*
          07                             # unsigned(7)
          65                             # text(5)
-            2573616d65                  #
+            2573616d65                  # %same
          0b                             # unsigned(11)
          d8 36                          # tag(54)
             50                          # bytes(16)
-               fe80000000000000583502fffe16885b #
+               fe80000000000000583502fffe16885b
          0e                             # unsigned(14)
          d8 36                          # tag(54)
             82                          # array(2)
                00                       # unsigned(0)
                50                       # bytes(16)
-                  00000000000000000000000000000000 #
+                  00000000000000000000000000000000
          0f                             # unsigned(15)
          02                             # unsigned(2)
          11                             # unsigned(17)
@@ -472,7 +472,6 @@ a1                                      # map(1)
       19 3840                           # unsigned(14400)
       18 93                             # unsigned(147)
       1a 00015180                       # unsigned(86400)
-
 "));
     }
 
@@ -482,12 +481,12 @@ a1                                      # map(1)
 
         let encoded_initiate = OpenswanWhackInterface::up_encoded(&policy_name.to_string());
         assert_eq!(encoded_initiate, hex!("
-a1                              # map(1)
+A1                              # map(1)
    07                           # unsigned(7)
-   a2                           # map(2)
+   A2                           # map(2)
       01                        # unsigned(1)
-      6b                        # text(11)
-         706565722d414243444546 #
+      6B                        # text(11)
+         706565722D414243444546 # peer-ABCDEF
       18 92                     # unsigned(146)
       02                        # unsigned(2)
 "));
