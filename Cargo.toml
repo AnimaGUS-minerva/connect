@@ -15,8 +15,8 @@ serde_cbor = "0.11.1"
 moz_cbor   = { git = "https://github.com/AnimaGUS-minerva/cbor-rust.git", branch = "implement-strings" }
 nix        = { version = "0.19" }
 netlink-packet-route = { version = "*" }
-rtnetlink     = { version = "0.7" }
-netlink-proto = { version = "0.7.0", features = [ "tokio_socket" ] }
+rtnetlink     = { version = "0.8" }
+netlink-proto = { version = "*", features = [ "tokio_socket" ] }
 netlink-packet-sock-diag = "*"
 async-trait   = "0.1.48"
 tokio         = { version = "1.7",    features = [ "macros", "io-util", "time", "process", "sync", "signal", "rt-multi-thread"] }
