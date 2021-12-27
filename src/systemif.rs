@@ -33,6 +33,7 @@ use rtnetlink::{
     new_connection,
     sys::{AsyncSocket, SocketAddr},
 };
+use netlink_packet_route::rtnl::{MACVLAN_MODE_BRIDGE};
 use netlink_packet_route::{
     NetlinkPayload::InnerMessage,
     RtnlMessage::NewLink,
@@ -44,7 +45,8 @@ use netlink_packet_route::{
     LinkMessage,
     RtnlMessage,
     NetlinkMessage
-//    AddressMessage
+    //    AddressMessage
+
 };
 //use std::os::unix::net::UnixStream;
 //use sysctl::Sysctl;
@@ -185,6 +187,45 @@ impl NetlinkManager for NetlinkInterface {
     }
 
     async fn create_macvlan(self: &Self, dullpid: Pid, physif: IfIndex) -> Result<(), rtnetlink::Error> {
+        let dname = format!("mull{:03}", physif);
+
+        let result = self.handle
+            .link()
+            .add()
+            .macvlan(dname.clone().into(), physif, MACVLAN_MODE_BRIDGE)
+            .execute()
+            .await;
+
+        match result {
+            Err(NetlinkError(ErrorMessage { code: -17, .. })) => { println!("network pair already created"); },
+            Ok(_x) => { },
+            _ => {
+                println!("new error: {:?}", result);
+                std::process::exit(0);
+            }
+        };
+
+        let mut mull0 = self.handle.link().get().match_name(dname.clone()).execute();
+        if let Some(link) = mull0.try_next().await? {
+            self.handle
+                .link()
+                .set(link.header.index)
+                .up()
+                .execute()
+                .await?;
+
+            // Punt one into the DULL namespace!
+            self.handle
+                .link()
+                .set(link.header.index)
+                .setns_by_pid(dullpid.as_raw() as u32)
+                .execute()
+                .await?;
+        } else {
+            println!("no child link {} found", dname);
+            return Ok(());
+        }
+
         return Ok(());
     }
 }
@@ -529,6 +570,25 @@ mod tests {
         }
     }
 
+    fn make_a_lone_if() -> netlink_packet_route::LinkMessage {
+        use netlink_packet_route::link::nlas::Info;
+        use netlink_packet_route::link::nlas::InfoKind;
+
+        LinkMessage {
+            header: LinkHeader {
+                interface_family: 0,
+                index: 1,
+                link_layer_type: ARPHRD_NETROM,
+                flags: 0,
+                change_mask: 0,
+            },
+            nlas: vec![
+                Nla::IfName("eth1".to_string()),
+                Nla::TxQueueLen(0),
+            ],
+        }
+    }
+
     async fn a_basic_eth0(si: &mut SystemInterfaces) -> Result<(), std::io::Error> {
         let eth0 = make_eth0();
 
@@ -561,6 +621,13 @@ mod tests {
             assert_eq!(trusted1.ignored,       false);
         }
 
+        Ok(())
+    }
+
+    async fn a_lone_if(si: &mut SystemInterfaces) -> Result<(), std::io::Error> {
+        let eth1 = make_a_lone_if();
+        gather_parent_link_info(si, &eth1, true).await.unwrap();
+        assert_eq!(si.ifcount, 1);
         Ok(())
     }
 
@@ -617,6 +684,13 @@ mod tests {
         let mut si = SystemInterfaces::empty();
         assert_eq!(aw!(a_bridge(&mut si)).unwrap(), ());
 
+        assert_eq!(aw!(do_calculate(&mut si)).unwrap(), ());
+    }
+
+    #[test]
+    fn should_add_macvlan_if() {
+        let mut si = SystemInterfaces::empty();
+        assert_eq!(aw!(a_lone_if(&mut si)).unwrap(), ());
         assert_eq!(aw!(do_calculate(&mut si)).unwrap(), ());
     }
 }
