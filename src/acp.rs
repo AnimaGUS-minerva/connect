@@ -51,7 +51,7 @@ use rtnetlink::{
     constants::{RTMGRP_IPV6_ROUTE, RTMGRP_IPV6_IFADDR, RTMGRP_LINK},
     Handle, Error,
     new_connection,
-    sys::SocketAddr,
+    sys::{AsyncSocket, SocketAddr},
 };
 use netlink_packet_route::{
     NetlinkPayload::InnerMessage,
@@ -349,7 +349,7 @@ async fn listen_network(childinfo: &Arc<Mutex<AcpChild>>) -> Result<tokio::task:
         // A netlink socket address is created with said flags.
         let addr = SocketAddr::new(0, mgroup_flags);
         // Said address is bound so new conenctions and thus new message broadcasts can be received.
-        connection.socket_mut().bind(&addr).expect("failed to bind");
+        connection.socket_mut().socket_mut().bind(&addr).expect("failed to bind");
         rt.spawn(connection);
 
         child_lo_up(&handle).await;
