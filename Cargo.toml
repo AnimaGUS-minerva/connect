@@ -39,14 +39,13 @@ tokio-test    = "0.4.2"
 hex-literal   = { version = "0.3.3" }
 
 [patch.crates-io]
-#netlink-proto = { git = "https://github.com/little-dude/netlink.git" }
-rtnetlink            = { path = "/ssw/projects/pandora/connect/netlink/rtnetlink", features = [ "tokio_socket" ] }
-netlink-packet-route = { path = "/ssw/projects/pandora/connect/netlink/netlink-packet-route" }
-netlink-packet-core  = { path = "/ssw/projects/pandora/connect/netlink/netlink-packet-core" }
-netlink-proto        = { path = "/ssw/projects/pandora/connect/netlink/netlink-proto" }
-netlink-sys          = { path = "/ssw/projects/pandora/connect/netlink/netlink-sys" }
-netlink-packet-utils = { path = "/ssw/projects/pandora/connect/netlink/netlink-packet-utils" }
-netlink-packet-sock-diag  = { path = "/ssw/projects/pandora/connect/netlink/netlink-packet-sock-diag" }
+rtnetlink            = { git = "https://github.com/AnimaGUS-minerva/netlink", features = [ "tokio_socket" ] }
+netlink-packet-route = { git = "https://github.com/AnimaGUS-minerva/netlink" }
+netlink-packet-core  = { git = "https://github.com/AnimaGUS-minerva/netlink" }
+netlink-proto        = { git = "https://github.com/AnimaGUS-minerva/netlink" }
+netlink-sys          = { git = "https://github.com/AnimaGUS-minerva/netlink" }
+netlink-packet-utils = { git = "https://github.com/AnimaGUS-minerva/netlink" }
+netlink-packet-sock-diag  = { git = "https://github.com/AnimaGUS-minerva/netlink" }
 hex-literal   = { git = "https://github.com/AnimaGUS-minerva/utils.git", branch = "allow-hash-comments-in-hex" }
 
 
