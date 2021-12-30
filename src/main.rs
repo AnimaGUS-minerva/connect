@@ -76,6 +76,10 @@ struct ConnectOptions {
     #[structopt(default_value = "false", long, parse(try_from_str))]
     debug_graspdaemon: bool,
 
+    // turn on debugging from Netlink
+    #[structopt(default_value = "false", long, parse(try_from_str))]
+    debug_parentlink: bool,
+
     // permit created DULL interfaces to accept Router Advertisements
     #[structopt(default_value = "false", long, parse(try_from_str))]
     allow_ra: bool,
@@ -162,7 +166,7 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
     println!("child ready, now starting netlink thread");
 
     // start up thread to listen to netlink in parent space, looking for new interfaces
-    let _parentloop = systemif::parent_processing(&rt, dull.dullpid).await;
+    let _parentloop = systemif::parent_processing(&rt, dull.dullpid, args.debug_parentlink).await;
     println!("parent processing loop started");
 
     let (sender, mut receiver) = mpsc::channel(2);

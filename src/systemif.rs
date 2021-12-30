@@ -448,7 +448,10 @@ async fn scan_interfaces(si: &mut SystemInterfaces, handle: &Handle) {
 
 
 pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>,
-                               dull_pid: Pid) -> Result<tokio::task::JoinHandle<Result<(),Error>>, String> {
+                               dull_pid: Pid,
+                               link_debug: bool) ->
+    Result<tokio::task::JoinHandle<Result<(),Error>>, String>
+{
 
     let rt1 = rt.clone();
 
@@ -456,6 +459,8 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>,
     let listenhandle = rt.spawn(async move {
 
         let mut si = SystemInterfaces::empty();
+
+        si.link_debugging = link_debug;
 
         println!("opening netlink socket for system interface monitor (debug={})", si.link_debugging);
 
