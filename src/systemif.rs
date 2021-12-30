@@ -307,13 +307,19 @@ impl SystemInterfaces {
                                        dull_pid: Pid) -> Result<(), rtnetlink::Error> {
 
         for (k,ifnl) in &self.system_interfaces {
-            let ifn = ifnl.lock().await;
+            let mut ifn = ifnl.lock().await;
             println!(" {:03}: name: {} {} {}", k, ifn.ifname,
                      ifn.ignored_str(), ifn.bridge_master_str());
 
-            if ifn.bridge_master && !ifn.has_dull_if {
-                println!("     creating new ethernet pair for {}", ifn.ifindex);
-                ni.create_ethernet_pair_for_bridge(dull_pid, ifn.ifindex).await.unwrap();
+            if !ifn.has_dull_if {
+                if ifn.bridge_master  {
+                    println!("     creating new ethernet pair for {}", ifn.ifindex);
+                    ni.create_ethernet_pair_for_bridge(dull_pid, ifn.ifindex).await.unwrap();
+                    ifn.has_dull_if = true;
+                } else if ifn.up {
+                    println!("     creating new ethernet macvlan for {}", ifn.ifindex);
+                    //ni.create_macvlan(dull_pid, ifn.ifindex).await.unwrap();
+                }
             }
         }
         Ok(())
