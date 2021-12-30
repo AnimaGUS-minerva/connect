@@ -33,7 +33,7 @@ use rtnetlink::{
     new_connection,
     sys::{AsyncSocket, SocketAddr},
 };
-use netlink_packet_route::rtnl::{MACVLAN_MODE_BRIDGE};
+use netlink_packet_route::rtnl::{MACVLAN_MODE_BRIDGE, ARPHRD_PPP, ARPHRD_ETHER};
 use netlink_packet_route::{
     NetlinkPayload::InnerMessage,
     RtnlMessage::NewLink,
@@ -198,6 +198,7 @@ impl NetlinkManager for NetlinkInterface {
             .await;
 
         match result {
+            Err(NetlinkError(ErrorMessage { code: -16, .. })) => { println!("network macvlan conflicts with bridge"); return Ok(()) },
             Err(NetlinkError(ErrorMessage { code: -17, .. })) => { println!("network macvlan already created"); return Ok(()) },
             Err(NetlinkError(ErrorMessage { code: -19, .. })) => { println!("network macvlan not valid"); return Ok(()) },
             Err(NetlinkError(ErrorMessage { code: -22, .. })) => { println!("network macvlan EINVAL"); return Ok(()) },
@@ -314,14 +315,15 @@ impl SystemInterfaces {
             println!(" {:03}: name: {} {} {}", k, ifn.ifname,
                      ifn.ignored_str(), ifn.bridge_master_str());
 
-            if !ifn.has_dull_if {
+            if !ifn.has_dull_if && !ifn.ignored {
                 if ifn.bridge_master  {
                     println!("     creating new ethernet pair for {}", ifn.ifindex);
                     ni.create_ethernet_pair_for_bridge(dull_pid, ifn.ifindex).await.unwrap();
                     ifn.has_dull_if = true;
-                } else if ifn.up {
+                } else if !ifn.bridge_slave && ifn.up {
                     println!("     creating new ethernet macvlan for {}", ifn.ifindex);
-                    //ni.create_macvlan(dull_pid, ifn.ifindex).await.unwrap();
+                    ni.create_macvlan(dull_pid, ifn.ifindex).await.unwrap();
+                    ifn.has_dull_if = true;
                 }
             }
         }
@@ -341,7 +343,14 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                                  lm: &LinkMessage,
                                  newlink: bool) -> Result<(), Error> {
     let ifindex = lm.header.index;
-    si.link_debug(format!("processing ifindex: {:?} added={}", ifindex, newlink));
+    si.link_debug(format!("processing ifindex: {:?} added={} type={:?}", ifindex, newlink, lm.header.link_layer_type));
+
+    /* only proceed if the interface type is ethernet */
+    match lm.header.link_layer_type {
+        ARPHRD_ETHER => {},
+        ARPHRD_PPP   => {},
+        _ => { /* just finish */  return Ok(()); }
+    }
 
     /* look up reference this ifindex, or create it */
     let ifna = SystemInterfaces::get_entry_by_ifindex(si, ifindex).await;
@@ -391,14 +400,14 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                                 InfoKind::MacVlan => {
                                     ifn.macvlan = true;
                                 }
-                                InfoKind::IpTun => { }
-                                InfoKind::Dummy => { }
-                                InfoKind::GreTap => { }
-                                InfoKind::GreTun => { }
-                                InfoKind::GreTun6 => { }
-                                InfoKind::Vti => { }
-                                InfoKind::SitTun => { }
-                                InfoKind::Veth => { }
+                                InfoKind::IpTun|
+                                InfoKind::Dummy|
+                                InfoKind::GreTap|
+                                InfoKind::GreTun|
+                                InfoKind::GreTun6|
+                                InfoKind::Vti|
+                                InfoKind::SitTun|
+                                InfoKind::Veth => { ifn.ignored = true; }
                                 _ => { si.link_debug(format!("2 other kind {:?}", kind)); }
                             }
                         }
