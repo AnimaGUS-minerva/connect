@@ -149,7 +149,8 @@ impl NetlinkManager for NetlinkInterface {
             .await;
 
         match result {
-            Err(NetlinkError(ErrorMessage { code: -17, .. })) => { println!("network pair already created"); },
+            Err(NetlinkError(ErrorMessage { code: -17, .. })) => { println!("network pair already created"); return Ok(()) },
+            Err(NetlinkError(ErrorMessage { code: -19, .. })) => { println!("network pair already exists"); return Ok(()) },
             Ok(_x) => { },
             _ => {
                 println!("new error: {:?}", result);
