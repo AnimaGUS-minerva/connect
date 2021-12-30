@@ -391,6 +391,14 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                                 InfoKind::MacVlan => {
                                     ifn.macvlan = true;
                                 }
+                                InfoKind::IpTun => { }
+                                InfoKind::Dummy => { }
+                                InfoKind::GreTap => { }
+                                InfoKind::GreTun => { }
+                                InfoKind::GreTun6 => { }
+                                InfoKind::Vti => { }
+                                InfoKind::SitTun => { }
+                                InfoKind::Veth => { }
                                 _ => { si.link_debug(format!("2 other kind {:?}", kind)); }
                             }
                         }
