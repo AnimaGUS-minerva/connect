@@ -424,12 +424,17 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
             }
             Nla::Address(_listofaddr) => { /* something with addresses */ }
             Nla::Carrier(_updown) => { /* something with the carrier */ }
-            Nla::Qdisc(_) | Nla::Map(_) | Nla::Mode(_) | Nla::Broadcast(_) |
+
+            Nla::Map(_) | Nla::AfSpecInet(_) | Nla::AfSpecBridge(_) |
+            Nla::ProtoDown(_) | Nla::ProtoInfo(_) |
+            Nla::Other(_) |
+            Nla::PermAddress(_) | Nla::MinMtu(_) | Nla::MaxMtu(_) |
+            Nla::Qdisc(_) | Nla::Mode(_) | Nla::Broadcast(_) |
             Nla::CarrierChanges(_) | Nla::CarrierUpCount(_) | Nla::CarrierDownCount(_) |
-            Nla::Other(_) | Nla::Group(_) | Nla::Promiscuity(_) |
-            Nla::ProtoDown(_) | Nla::TxQueueLen(_) | Nla::NumTxQueues(_) | Nla::NumRxQueues(_) |
-            Nla::GsoMaxSegs(_) | Nla::GsoMaxSize(_) | Nla::AfSpecInet(_) | Nla::AfSpecBridge(_) |
-            Nla::ProtoInfo(_) | Nla::Event(_) |
+            Nla::Group(_) | Nla::Promiscuity(_) |
+            Nla::TxQueueLen(_) | Nla::NumTxQueues(_) | Nla::NumRxQueues(_) |
+            Nla::GsoMaxSegs(_) | Nla::GsoMaxSize(_) |
+            Nla::Event(_) |
             Nla::Stats64(_) | Nla::Stats(_) | Nla::Xdp(_) => { /* nothing */ }
             _ => { si.link_debug(format!("index: {} system if nlas info: {:?}", ifindex, nlas)); }
         }
