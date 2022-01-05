@@ -631,6 +631,8 @@ mod tests {
             },
             nlas: vec![
                 Nla::IfName("eth1".to_string()),
+                Nla::OperState(State::Up),
+                Nla::IfName("eth1".to_string()),
                 Nla::TxQueueLen(0),
             ],
         }
