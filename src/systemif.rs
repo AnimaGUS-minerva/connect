@@ -282,6 +282,7 @@ impl SystemInterface {
 
 /* so far only info we care about */
 struct SystemInterfaces {
+    pub initial_loop: bool,
     pub system_interfaces:  HashMap<u32, Arc<Mutex<SystemInterface>>>,
     pub ifcount: u32,
     pub link_debugging: bool,
@@ -291,6 +292,7 @@ struct SystemInterfaces {
 impl SystemInterfaces {
     pub fn empty() -> SystemInterfaces {
         SystemInterfaces {
+            initial_loop: true,
             system_interfaces:  HashMap::new(), ifcount: 0,
             link_debugging: false, ignored_interfaces: vec![]
         }
@@ -317,11 +319,15 @@ impl SystemInterfaces {
         for (k,ifnl) in &self.system_interfaces {
             let mut ifn = ifnl.lock().await;
 
-            println!(" {:03}: name: {} {} {}", k, ifn.ifname,
-                     ifn.ignored_str(), ifn.bridge_master_str());
+            if !self.initial_loop {
+                println!(" {:03}: name: {} {} {}", k, ifn.ifname,
+                         ifn.ignored_str(), ifn.bridge_master_str());
+            }
 
             if self.ignored_interfaces.contains(&ifn.ifname) {
-                println!("   ignoring as required");
+                if !self.initial_loop {
+                    println!("   ignored as requested");
+                }
                 ifn.ignored=true;
                 continue;
             }
@@ -340,6 +346,7 @@ impl SystemInterfaces {
                 }
             }
         }
+        self.initial_loop = true;
         Ok(cnt)
     }
 
