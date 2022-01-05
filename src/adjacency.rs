@@ -25,7 +25,7 @@ use futures::stream::TryStreamExt;
 use futures::lock::{Mutex};
 use netlink_packet_sock_diag::constants::IPPROTO_UDP;
 use tokio::time::{sleep, Duration};
-//use tokio::process::Command;
+use tokio::process::Command;
 
 use crate::dull::DullInterface;
 use crate::grasp;
@@ -179,13 +179,21 @@ impl Adjacency {
                  self.advertisement_count,
                  self.v6addr, vtinum_str);
 
-        self.openswan_reference =
-            Some(OpenswanWhackInterface::add_adjacency(&self.vti_iface,
-                                                       vtinum as u32,
-                                                       myll6addr,
-                                                       self.v6addr).await.unwrap());
-
-
+        if true {
+            // but for now, run a script to do it manually.
+            let _command = Command::new("/root/tunnel")
+                .arg(self.vti_iface.to_string())
+                .arg(vtinum_str)
+                .arg(myll6addr.to_string())
+                .arg(self.v6addr.to_string())
+                .spawn().unwrap();
+        } else {
+            self.openswan_reference =
+                Some(OpenswanWhackInterface::add_adjacency(&self.vti_iface,
+                                                           vtinum as u32,
+                                                           myll6addr,
+                                                           self.v6addr).await.unwrap());
+        }
 
         if auto_up {
             if let Some(osw_name) = &self.openswan_reference {
