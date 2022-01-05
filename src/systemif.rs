@@ -284,13 +284,15 @@ impl SystemInterface {
 struct SystemInterfaces {
     pub system_interfaces:  HashMap<u32, Arc<Mutex<SystemInterface>>>,
     pub ifcount: u32,
-    pub link_debugging: bool
+    pub link_debugging: bool,
+    pub ignored_interfaces: Vec<String>
 }
 
 impl SystemInterfaces {
     pub fn empty() -> SystemInterfaces {
         SystemInterfaces {
-            system_interfaces:  HashMap::new(), ifcount: 0, link_debugging: false
+            system_interfaces:  HashMap::new(), ifcount: 0,
+            link_debugging: false, ignored_interfaces: vec![]
         }
     }
 
@@ -318,11 +320,11 @@ impl SystemInterfaces {
             println!(" {:03}: name: {} {} {}", k, ifn.ifname,
                      ifn.ignored_str(), ifn.bridge_master_str());
 
-            //if self.ignored_interfaces.contains(&ifn.ifname) {
-            //    println!("   ignoring as required");
-            //    ifn.ignored=true;
-            //    continue;
-            //}
+            if self.ignored_interfaces.contains(&ifn.ifname) {
+                println!("   ignoring as required");
+                ifn.ignored=true;
+                continue;
+            }
 
             if !ifn.has_dull_if && !ifn.ignored {
                 if ifn.bridge_master  {
@@ -491,7 +493,8 @@ async fn scan_interfaces(si: &mut SystemInterfaces, handle: &Handle) {
 
 pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>,
                                dull_pid: Pid,
-                               link_debug: bool) ->
+                               link_debug: bool,
+                               ignored_interfaces: Vec<String>) ->
     Result<tokio::task::JoinHandle<Result<(),Error>>, String>
 {
 
@@ -503,6 +506,7 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>,
         let mut si = SystemInterfaces::empty();
 
         si.link_debugging = link_debug;
+        si.ignored_interfaces = ignored_interfaces;
 
         println!("opening netlink socket for system interface monitor (debug={})", si.link_debugging);
 
@@ -532,7 +536,7 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>,
             }
 
             /* now do any calculations needed */
-            //si.calculate_needed_dull(&nl, dull_pid).await.unwrap();
+            si.calculate_needed_dull(&nl, dull_pid).await.unwrap();
         };
         Ok(())
     });
@@ -740,6 +744,15 @@ mod tests {
         let mut si = SystemInterfaces::empty();
         assert_eq!(aw!(a_lone_if(&mut si)).unwrap(), ());
         assert_eq!(aw!(do_calculate(&mut si)).unwrap(), 1);
+    }
+
+    #[test]
+    fn should_ignore_eth1_if() {
+        let mut si = SystemInterfaces::empty();
+        assert_eq!(aw!(a_lone_if(&mut si)).unwrap(), ());
+
+        si.ignored_interfaces = vec!["eth1".to_string()];
+        assert_eq!(aw!(do_calculate(&mut si)).unwrap(), 0);
     }
 }
 

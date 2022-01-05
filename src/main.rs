@@ -92,8 +92,9 @@ struct ConnectOptions {
     #[structopt(default_value = "false", long, parse(try_from_str))]
     auto_up: bool,
 
-    //    bridge_name: String
-
+    // list of interfaces to ignore when auto-configuring
+    #[structopt(long="ignore-interface")]
+    ignored_interfaces: Vec<String>,
 }
 
 async fn set_opt(dull: &mut dull::Dull, opt: control::DullControl) {
@@ -166,7 +167,9 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
     println!("child ready, now starting netlink thread");
 
     // start up thread to listen to netlink in parent space, looking for new interfaces
-    let _parentloop = systemif::parent_processing(&rt, dull.dullpid, args.debug_parentlink).await;
+    let _parentloop = systemif::parent_processing(&rt, dull.dullpid,
+                                                  args.debug_parentlink,
+                                                  args.ignored_interfaces).await;
     println!("parent processing loop started");
 
     let (sender, mut receiver) = mpsc::channel(2);
