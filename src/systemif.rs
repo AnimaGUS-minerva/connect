@@ -308,26 +308,37 @@ impl SystemInterfaces {
 
     pub async fn calculate_needed_dull(self: &Self,
                                        ni: &dyn NetlinkManager,
-                                       dull_pid: Pid) -> Result<(), rtnetlink::Error> {
+                                       dull_pid: Pid) -> Result<u32, rtnetlink::Error> {
+
+        let mut cnt = 0;
 
         for (k,ifnl) in &self.system_interfaces {
             let mut ifn = ifnl.lock().await;
+
             println!(" {:03}: name: {} {} {}", k, ifn.ifname,
                      ifn.ignored_str(), ifn.bridge_master_str());
+
+            //if self.ignored_interfaces.contains(&ifn.ifname) {
+            //    println!("   ignoring as required");
+            //    ifn.ignored=true;
+            //    continue;
+            //}
 
             if !ifn.has_dull_if && !ifn.ignored {
                 if ifn.bridge_master  {
                     println!("     creating new ethernet pair for {}", ifn.ifindex);
                     ni.create_ethernet_pair_for_bridge(dull_pid, ifn.ifindex).await.unwrap();
                     ifn.has_dull_if = true;
+                    cnt += 1;
                 } else if !ifn.bridge_slave && ifn.up {
                     println!("     creating new ethernet macvlan for {}", ifn.ifindex);
                     ni.create_macvlan(dull_pid, ifn.ifindex).await.unwrap();
                     ifn.has_dull_if = true;
+                    cnt += 1;
                 }
             }
         }
-        Ok(())
+        Ok(cnt)
     }
 
     pub fn link_debug(self: &mut Self,
@@ -692,6 +703,7 @@ mod tests {
     #[test]
     fn basic_eth0() {
         let mut si = SystemInterfaces::empty();
+        si.link_debugging = true;
         assert_eq!(aw!(a_basic_eth0(&mut si)).unwrap(), ());
     }
 
@@ -707,27 +719,25 @@ mod tests {
         assert_eq!(aw!(a_bridge(&mut si)).unwrap(), ());
     }
 
-    async fn do_calculate(si: &mut SystemInterfaces) -> Result<(), std::io::Error> {
+    async fn do_calculate(si: &mut SystemInterfaces) -> Result<u32, std::io::Error> {
 
         let dull_pid = Pid::from_raw(1234);
         let ni = FakeNetlinkInterface {};
-        si.calculate_needed_dull(&ni, dull_pid).await.unwrap();
-        Ok(())
+        return Ok(si.calculate_needed_dull(&ni, dull_pid).await.unwrap());
     }
 
     #[test]
     fn should_add_ethernet_pair() {
         let mut si = SystemInterfaces::empty();
         assert_eq!(aw!(a_bridge(&mut si)).unwrap(), ());
-
-        assert_eq!(aw!(do_calculate(&mut si)).unwrap(), ());
+        assert_eq!(aw!(do_calculate(&mut si)).unwrap(), 1);
     }
 
     #[test]
     fn should_add_macvlan_if() {
         let mut si = SystemInterfaces::empty();
         assert_eq!(aw!(a_lone_if(&mut si)).unwrap(), ());
-        assert_eq!(aw!(do_calculate(&mut si)).unwrap(), ());
+        assert_eq!(aw!(do_calculate(&mut si)).unwrap(), 1);
     }
 }
 
