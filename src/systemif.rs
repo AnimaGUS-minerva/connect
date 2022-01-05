@@ -557,7 +557,7 @@ mod tests {
             header: LinkHeader {
                 interface_family: 0,
                 index: 1,
-                link_layer_type: ARPHRD_NETROM,
+                link_layer_type: ARPHRD_ETHER,
                 flags: 0,
                 change_mask: 0,
             },
@@ -573,7 +573,7 @@ mod tests {
             header: LinkHeader {
                 interface_family: 0,
                 index: 1,
-                link_layer_type: ARPHRD_NETROM,
+                link_layer_type: ARPHRD_ETHER,
                 flags: 0,
                 change_mask: 0,
             },
@@ -593,7 +593,7 @@ mod tests {
             header: LinkHeader {
                 interface_family: 0,
                 index: 2,
-                link_layer_type: ARPHRD_NETROM,
+                link_layer_type: ARPHRD_ETHER,
                 flags: 0,
                 change_mask: 0,
             },
@@ -614,7 +614,7 @@ mod tests {
             header: LinkHeader {
                 interface_family: 0,
                 index: 1,
-                link_layer_type: ARPHRD_NETROM,
+                link_layer_type: ARPHRD_ETHER,
                 flags: 0,
                 change_mask: 0,
             },
