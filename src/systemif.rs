@@ -277,6 +277,10 @@ impl SystemInterface {
         if self.bridge_master { "bridge".to_string() } else { "normal".to_string() }
     }
 
+    pub fn log_if(self: &Self, k: u32) {
+        println!(" {:03}: name: {} {} {}", k, self.ifname,
+                 self.ignored_str(), self.bridge_master_str());
+    }
 
 }
 
@@ -321,10 +325,8 @@ impl SystemInterfaces {
                 continue;
             }
 
-            println!(" {:03}: name: {} {} {}", k, ifn.ifname,
-                     ifn.ignored_str(), ifn.bridge_master_str());
-
             if self.ignored_interfaces.contains(&ifn.ifname) {
+                ifn.log_if(*k);
                 println!("   ignored as requested");
                 ifn.ignored=true;
                 continue;
@@ -332,11 +334,13 @@ impl SystemInterfaces {
 
             if !ifn.has_dull_if && !ifn.ignored {
                 if ifn.bridge_master  {
+                    ifn.log_if(*k);
                     println!("     creating new ethernet pair for {}", ifn.ifindex);
                     ni.create_ethernet_pair_for_bridge(dull_pid, ifn.ifindex).await.unwrap();
                     ifn.has_dull_if = true;
                     cnt += 1;
                 } else if !ifn.bridge_slave && ifn.up {
+                    ifn.log_if(*k);
                     println!("     creating new ethernet macvlan for {}", ifn.ifindex);
                     ni.create_macvlan(dull_pid, ifn.ifindex).await.unwrap();
                     ifn.has_dull_if = true;
