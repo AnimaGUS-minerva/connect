@@ -608,7 +608,7 @@ async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream) {
     }
 
     // now, also start pluto in this namespace.
-    openswan::OpenswanWhackInterface::openswan_start().await.unwrap();
+    openswan::OpenswanWhackInterface::openswan_start().await.expect("Openswan Did Not start correctly");
 
     // DBG_CONTROL, bit 4
     // DBG_CONTROLMORE, bit 9
