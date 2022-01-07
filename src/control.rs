@@ -65,6 +65,7 @@ pub enum DullControl {
     AdminDown { interface_index: u32 },
     GraspDebug { grasp_debug: bool },
     AutoAdjacency { adj_up: bool },
+    DisableIKEv2  { disable_ikev2: bool },
     DullNamespace { namespace_id: i32 },
     ChildReady
 }
@@ -251,6 +252,19 @@ mod tests {
         let data = DullControl::AdminDown { interface_index: 5u32 };
 
         //note that encode/decode can only handle a single message
+
+        // encode it.
+        let e = ControlStream::encode_msg(&data);
+
+        // decode it.
+        let d: DullControl = ControlStream::decode_msg(&e);
+
+        assert_eq!(d, data);
+    }
+
+    #[test]
+    fn test_encode_decode_disable_ikev2() {
+        let data = DullControl::DisableIKEv2 { disable_ikev2: true };
 
         // encode it.
         let e = ControlStream::encode_msg(&data);

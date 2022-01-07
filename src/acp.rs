@@ -440,6 +440,7 @@ pub async fn process_control(child: Arc<Mutex<AcpChild>>, mut cs: ControlStream)
                     dl.debug.debug_graspdaemon = deb;
                 }
                 control::DullControl::AutoAdjacency { .. } => {}
+                control::DullControl::DisableIKEv2  { .. } => {}
                 control::DullControl::ChildReady => {} // nothing to do
                 control::DullControl::DullNamespace { .. } => {} // nothing to do
             }

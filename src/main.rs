@@ -88,6 +88,10 @@ struct ConnectOptions {
     #[structopt(default_value = "86400", long, parse(try_from_str))]
     salive: u32,
 
+    // whether to disable starting/invoking IKEv2 daemon (Openswan)
+    #[structopt(default_value = "false", long, parse(try_from_str))]
+    disable_ikev2: bool,
+
     // whether to bring IPsec SA up automatically
     #[structopt(default_value = "false", long, parse(try_from_str))]
     auto_up: bool,
@@ -126,6 +130,11 @@ async fn set_auto_up_adj(dull: &mut dull::Dull, auto_up: bool) {
     set_opt(dull, opt).await;
 }
 
+async fn set_auto_ikev2(dull: &mut dull::Dull, disable_ikev2: bool) {
+    let opt = control::DullControl::DisableIKEv2 { disable_ikev2: disable_ikev2 };
+    set_opt(dull, opt).await;
+}
+
 async fn parents(rt: Arc<tokio::runtime::Runtime>,
                  dullinit: dull::DullInit,
                  acpinit:  acp::AcpInit,
@@ -143,6 +152,9 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
 
     // tell the DULL whether to bring up IPsec automatically
     set_auto_up_adj(&mut dull, args.auto_up).await;
+
+    // tell the DULL whether to start IKEv2 daemon
+    set_auto_ikev2(&mut dull, args.disable_ikev2).await;
 
     // wait for hello from ACP and then DULL namespace
     println!("waiting for ACP  startup");

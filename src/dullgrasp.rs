@@ -128,6 +128,9 @@ impl GraspDaemon {
         let mut auto_up_adj = {
             dd.lock().await.data.lock().await.auto_up_adj
         };
+        let mut disable_ikev2 = {
+            dd.lock().await.data.lock().await.disable_ikev2
+        };
         loop {
             let mut bufbytes = [0u8; 2048];
 
@@ -241,7 +244,7 @@ impl GraspDaemon {
                     adj.increment();
 
                     /* bring the dang thing up!! */
-                    let result = adj.up(auto_up_adj).await;
+                    let result = adj.up(auto_up_adj, disable_ikev2).await;
                     match result {
                         Err(stuff) => { println!("error: {:?}", stuff); }
                         Ok(_) => { }
@@ -259,6 +262,10 @@ impl GraspDaemon {
 
             auto_up_adj = {
                 dd.lock().await.data.lock().await.auto_up_adj
+            };
+
+            disable_ikev2 = {
+                dd.lock().await.data.lock().await.disable_ikev2
             };
 
             cnt += 1;

@@ -137,6 +137,8 @@ pub struct DullData {
     pub debug:         DebugOptions,
     pub exit_now:      bool,
     pub auto_up_adj:   bool,
+    pub disable_ikev2: bool,
+    pub ikev2_started: bool,
     pub handle:        Option<Handle>
 }
 
@@ -158,6 +160,8 @@ impl DullData {
                           debug: DebugOptions::empty(),
                           exit_now:         false,
                           auto_up_adj:      true,
+                          disable_ikev2:    true,
+                          ikev2_started:    false,
                           acpns:            Pid::this(),
                           handle: None
         }
@@ -489,6 +493,29 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>,
                              mut child_stream: control::ControlStream) {
     loop {
         println!("DULL process reading control...");
+
+        {
+            let cl = child.lock().await;
+            let dl = cl.data.lock().await;
+
+            if dl.disable_ikev2 == false && dl.ikev2_started == false {
+                // start IKEv2 daemon
+                openswan::OpenswanWhackInterface::openswan_start()
+                    .await.expect("Openswan Did Not start correctly");
+
+                // set some default cdebug options for now
+                // DBG_CONTROL, bit 4
+                // DBG_CONTROLMORE, bit 9
+                openswan::OpenswanWhackInterface::openswan_some_debug((1<<4)|(1<<9))
+                    .await.unwrap();
+
+            } else if dl.disable_ikev2 == true && dl.ikev2_started == false {
+                // stop  IKEv2 daemon
+                openswan::OpenswanWhackInterface::openswan_stop()
+                    .await.expect("openswan was not stopped");
+            }
+        }
+        
         if let Ok(thing) = child_stream.read_control().await {
             match thing {
                 control::DullControl::Exit => {
@@ -521,6 +548,14 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>,
                     let mut dl = cl.data.lock().await;
                     dl.auto_up_adj = auto_up;
                     println!("DULL automatic tunnel enable: {}", auto_up);
+                }
+                control::DullControl::DisableIKEv2 { disable_ikev2: ikev2 } => {
+                    let cl = child.lock().await;
+                    let mut dl = cl.data.lock().await;
+                    dl.disable_ikev2 = ikev2;
+                    if ikev2 {
+                        println!("DULL IKEv2 disable");
+                    }
                 }
                 control::DullControl::GraspDebug { grasp_debug: deb } => {
                     println!("Debug set to {}", deb);
@@ -606,13 +641,6 @@ async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream) {
         let mut cil = childinfo.lock().await;
         cil.netlink_handle = Some(netlink_handle);
     }
-
-    // now, also start pluto in this namespace.
-    openswan::OpenswanWhackInterface::openswan_start().await.expect("Openswan Did Not start correctly");
-
-    // DBG_CONTROL, bit 4
-    // DBG_CONTROLMORE, bit 9
-    openswan::OpenswanWhackInterface::openswan_some_debug((1<<4)|(1<<9)).await.unwrap();
 
     /* let parent know that we ready */
     println!("tell parent, child is ready");

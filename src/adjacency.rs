@@ -159,7 +159,7 @@ impl Adjacency {
         Ok(())
     }
 
-    pub async fn up(self: &mut Adjacency, auto_up: bool) -> Result<(), rtnetlink::Error> {
+    pub async fn up(self: &mut Adjacency, auto_up: bool, disable_ikev2: bool) -> Result<(), rtnetlink::Error> {
         // A VTI will have been assigned already if we already trying to bring a tunnel up.
         if self.vti_number == None {
             self.make_vti().await?;
@@ -179,7 +179,7 @@ impl Adjacency {
                  self.advertisement_count,
                  self.v6addr, vtinum_str);
 
-        if true {
+        if disable_ikev2 {
             // but for now, run a script to do it manually.
             let _command = Command::new("/root/tunnel")
                 .arg(self.vti_iface.to_string())
@@ -193,19 +193,19 @@ impl Adjacency {
                                                            vtinum as u32,
                                                            myll6addr,
                                                            self.v6addr).await.unwrap());
-        }
-
-        if auto_up {
-            if let Some(osw_name) = &self.openswan_reference {
-                // now up the interface after a random delay, 0 to 255ms.
-                let delay_time: u8 = rand::random::<u8>();
-                sleep(Duration::from_millis(delay_time as u64)).await;
-
-                OpenswanWhackInterface::up_adjacency(&osw_name).await.unwrap();
+            if auto_up {
+                if let Some(osw_name) = &self.openswan_reference {
+                    // now up the interface after a random delay, 0 to 255ms.
+                    let delay_time: u8 = rand::random::<u8>();
+                    sleep(Duration::from_millis(delay_time as u64)).await;
+                    
+                    OpenswanWhackInterface::up_adjacency(&osw_name).await.unwrap();
+                }
+            } else {
+                println!("Auto-Up is set to false");
             }
-        } else {
-            println!("Auto-Up is set to false");
         }
+
 
         Ok(())
     }
