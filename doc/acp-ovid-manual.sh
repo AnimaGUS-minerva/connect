@@ -17,8 +17,8 @@ bridge2=ietf
 # make the DULL and ACP namespace
 # use unshare to make sure that there is a PID, which is needed to make the
 # ip link set work right.
-acppid=$(unshare -f -n sh -c 'sleep 1d >/dev/null& echo $!')
-dullpid=$(unshare -f -n sh -c 'sleep 1d >/dev/null& echo $!')
+acppid=$(unshare -f -n sh -c 'sleep 1h >/dev/null& echo $!')
+dullpid=$(unshare -f -n sh -c 'sleep 1h >/dev/null& echo $!')
 ip netns attach dull $dullpid
 ip netns attach acp  $acppid
 
@@ -28,6 +28,8 @@ ps ax | grep $acppid
 echo DULL: $dullpid
 ps ax | grep $dullpid
 
+# using nsenter rather than "ip netns exec" removes buffering from
+# output of commands: some pty gets interspersed.
 dull() {
     nsenter -t $dullpid -n $*
 }
@@ -109,31 +111,37 @@ acp sysctl -w net.ipv6.conf.acp_001.disable_policy=1
 cipher2=0xf6ddb555acfd9d77b03ea3843f263255
 integ2=0x96358c90783bbfa3d7b196ceabe036b5
 algo=aes
+#algo=null
+#mode=transport
+mode=tunnel
 dull ip xfrm state add src $ME dst $THEM2 proto esp spi $OSPI2 \
         auth sha1 $integ2 \
         enc $algo $cipher2 \
-        mode tunnel \
+        mode $mode \
         mark $MARK2
 
 dull ip xfrm state add src $THEM2 dst $ME proto esp spi $ISPI2 \
         auth sha1 $integ2 \
         enc $algo $cipher2 \
-        mode tunnel \
+        mode $mode \
         mark $MARK2
+
+dull ip xfrm policy add src $ME/128 dst $THEM2/128 \
+     dir out ptype main allow
 
 dull ip xfrm policy add src ::/0 dst ::/0 \
         dir out ptype main \
         tmpl src $ME dst $THEM2 \
-        proto esp mode tunnel \
+        proto esp mode $mode \
         mark $MARK2 mask 0xffffffff
 
 dull ip xfrm policy add src ::/0 dst ::/0 \
         dir in ptype main \
         tmpl src $THEM2 dst $ME \
-        proto esp mode tunnel \
+        proto esp mode $mode \
         mark $MARK2 mask 0xffffffff
 
-dull ip -6 neigh add $THEM2 lladdr 10:00:00:00:33:33 dev t1
+#dull ip -6 neigh add $THEM2 lladdr 10:00:00:00:33:33 dev t1
 
 # create a VTI interface in DULL, move it to ACP.
 dull ip -6 tunnel add acp_002 mode vti6 local $ME remote $THEM2 key $MARK2
@@ -148,14 +156,15 @@ acp ip link set acp_002 up
 acp sysctl -w net.ipv6.conf.acp_002.disable_policy=1
 acp ip link ls
 
-dull tcpdump -e -i any -n -p esp &
+#dull tcpdump -X -e -i any -n -p esp -w espstuff.pcap &
+dull tcpdump -e -i any -n -p ip6 and not port 5353 &
 tcpdumppid=$!
 acp ping6 -c1 fe80::1:1111%acp_001
 acp ping6 -c1 fe80::1:1111%acp_002
 
 sleep 5;
+ps ax | grep $tcpdumppid
 ip netns delete dull
 ip netns delete acp
 kill $acppid
 kill $dullpid
-kill $tcpdumppid
