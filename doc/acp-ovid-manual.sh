@@ -29,10 +29,10 @@ echo DULL: $dullpid
 ps ax | grep $dullpid
 
 dull() {
-    ip netns exec dull $*
+    nsenter -t $dullpid -n $*
 }
 acp() {
-    ip netns exec acp $*
+    nsenter -t $acppid -n $*
 }
 
 # put interface to first bridge in.
@@ -92,7 +92,7 @@ dull ip -6 neigh add $THEM1 lladdr 10:00:00:00:22:22 dev t1
 
 # create a VTI interface in DULL, move it to ACP.
 dull ip -6 tunnel add acp_001 mode vti6 local $ME remote $THEM1 key $MARK1
-dull ip link ls
+#dull ip link ls
 
 #set -x
 #echo MOVING interfaces
@@ -102,6 +102,7 @@ echo MOVED interface
 acp ip link ls
 
 acp ip link set acp_001 up
+acp sysctl -w net.ipv6.conf.acp_001.disable_policy=1
 
 
 # set up the second SA
@@ -136,12 +137,25 @@ dull ip -6 neigh add $THEM2 lladdr 10:00:00:00:33:33 dev t1
 
 # create a VTI interface in DULL, move it to ACP.
 dull ip -6 tunnel add acp_002 mode vti6 local $ME remote $THEM2 key $MARK2
-dull ip link ls
+#dull ip link ls
 
 #necho MOVING interfaces
 #acp ip link ls
 dull ip link set acp_002 netns $acppid
 echo MOVED interface
-acp ip link ls
 
 acp ip link set acp_002 up
+acp sysctl -w net.ipv6.conf.acp_002.disable_policy=1
+acp ip link ls
+
+dull tcpdump -e -i any -n -p esp &
+tcpdumppid=$!
+acp ping6 -c1 fe80::1:1111%acp_001
+acp ping6 -c1 fe80::1:1111%acp_002
+
+sleep 5;
+ip netns delete dull
+ip netns delete acp
+kill $acppid
+kill $dullpid
+kill $tcpdumppid
