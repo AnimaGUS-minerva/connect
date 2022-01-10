@@ -19,10 +19,10 @@ bridge2=ietf
 # ip link set work right.
 acppid=$(unshare -f -n sh -c 'sleep 1h >/dev/null& echo $!')
 dullpid=$(unshare -f -n sh -c 'sleep 1h >/dev/null& echo $!')
-ip netns attach dull $dullpid
-ip netns attach acp  $acppid
 echo $dullpid >/run/acp/dull.pid
 echo $acppid  >/run/acp/acp.pid
+ip netns attach dull $dullpid
+ip netns attach acp  $acppid
 
 echo ACP: $acppid
 ps ax | grep $acppid
@@ -49,22 +49,28 @@ dull ip link set t1 up
 ip link set t0 up
 
 # avoid randomized LLv6 addr
-dull ip addr add fe80::3333/64 dev t1
+dull ip addr add fe80::2222/64 dev t1
 
 #dull bash
 
-# setup an IPsec tunnel SA.
-OSPI1=0x00300020
-ISPI1=0x00200030
-OSPI2=0x00300010
-ISPI2=0x00100030
+# PEER 1 - hermes
+# PEER 2 - moira
+# PEER 3 - ovid
+
+# setup an IPsec tunnel SA 1: moira<->ovid
+OSPI1=0x00200030
+ISPI1=0x00300020
 MARK1=0x1
+
+# moira only makes one SPI
+#OSPI2=0x00300010
+#ISPI2=0x00100030
 MARK2=0x2
-ME=fe80::3333
-THEM1=fe80::2222
+ME=fe80::2222
+THEM1=fe80::3333
 #THEM1=fe80::8c3c:93ff:fea0:331e
-THEM2=fe80::1111
-#THEM2=fe80::c61:e5ff:fe45:21bd
+#THEM2=fe80::3333
+THEM2=fe80::c61:e5ff:fe45:21bd
 
 # set up the first SA
 cipher1=0xf6ddb555acfd9d77b03ea3843f265325
@@ -105,14 +111,17 @@ dull ip -6 tunnel add acp_001 mode vti6 local $ME remote $THEM1 key $MARK1
 #echo MOVING interfaces
 #acp ip link ls
 dull ip link set acp_001 netns $acppid
+dull ip link set acp_001 up
+
 echo MOVED interface
 
 acp ip link set acp_001 up
-acp ip addr add fe80::1:3333/64 dev acp_001
+acp ip addr add fe80::1:2222/64 dev acp_001
 acp sysctl -w net.ipv6.conf.acp_001.disable_policy=1
 acp ip link ls
 
-
+if false
+then
 # set up the second SA
 cipher2=0xf6ddb555acfd9d77b03ea3843f263255
 integ2=0x96358c90783bbfa3d7b196ceabe036b5
@@ -132,8 +141,8 @@ dull ip xfrm state add src $THEM2 dst $ME proto esp spi $ISPI2 \
         mode $mode \
         mark $MARK2
 
-#dull ip xfrm policy add src $ME/128 dst $THEM2/128 \
-#     dir out ptype main action allow
+dull ip xfrm policy add src $ME/128 dst $THEM2/128 \
+     dir out ptype main allow
 
 dull ip xfrm policy add src ::/0 dst ::/0 \
         dir out ptype main \
@@ -161,18 +170,18 @@ echo MOVED interface
 acp ip link set acp_002 up
 acp sysctl -w net.ipv6.conf.acp_002.disable_policy=1
 acp ip link ls
-dull ip xfrm state ls
+fi
 
 #dull tcpdump -X -e -i any -n -p esp -w espstuff.pcap &
 #dull tcpdump -e -i any -n -p ip6 and not port 5353 &
-#tcpdumppid=$!
-acp ping6 -c1 fe80::1:2222%acp_001
-acp ping6 -c1 fe80::1:1111%acp_002
-
-sleep 5;
+dull tcpdump -e -i any -n -p esp &
+tcpdumppid=$!
+#acp ping6 -c1 fe80::1:1111%acp_001
+#acp ping6 -c1 fe80::1:1111%acp_002
 
 echo HIT ENTER TO END
 read ans
+
 killall tcpdump
 ip netns delete dull
 ip netns delete acp
