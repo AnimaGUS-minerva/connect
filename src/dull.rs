@@ -503,25 +503,37 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>,
                 openswan::OpenswanWhackInterface::openswan_start()
                     .await.expect("Openswan Did Not start correctly");
 
+                // delay a bit to let it start up.
+                sleep(Duration::from_millis(300)).await;
+
                 // set some default cdebug options for now
                 // DBG_CONTROL, bit 4
                 // DBG_CONTROLMORE, bit 9
                 openswan::OpenswanWhackInterface::openswan_some_debug((1<<4)|(1<<9))
                     .await.unwrap();
 
-            } else if dl.disable_ikev2 == true && dl.ikev2_started == false {
+            } else if dl.disable_ikev2 == true && dl.ikev2_started == true {
                 // stop  IKEv2 daemon
                 openswan::OpenswanWhackInterface::openswan_stop()
                     .await.expect("openswan was not stopped");
             }
         }
-        
+
         if let Ok(thing) = child_stream.read_control().await {
             match thing {
                 control::DullControl::Exit => {
                     println!("DULL process shutting down pluto");
-                    openswan::OpenswanWhackInterface::openswan_stop().await.expect("openswan was not stopped");
-                    sleep(Duration::from_millis(100)).await;
+
+                    {
+                        /* shutdown Openswan daemon if it is running */
+                        let cl = child.lock().await;
+                        let dl = cl.data.lock().await;
+                        if dl.ikev2_started {
+                            openswan::OpenswanWhackInterface::openswan_stop().await.expect("openswan was not stopped");
+                            sleep(Duration::from_millis(100)).await;
+                        }
+                    }
+
                     println!("DULL process now dying");
                     {
                         let cl = child.lock().await;
@@ -554,7 +566,9 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>,
                     let mut dl = cl.data.lock().await;
                     dl.disable_ikev2 = ikev2;
                     if ikev2 {
-                        println!("DULL IKEv2 disable");
+                        println!("DULL IKEv2 disabled");
+                    } else {
+                        println!("DULL starting IKEv2");
                     }
                 }
                 control::DullControl::GraspDebug { grasp_debug: deb } => {
