@@ -89,7 +89,7 @@ struct ConnectOptions {
     salive: u32,
 
     // whether to disable starting/invoking IKEv2 daemon (Openswan)
-    #[structopt(default_value = "false", long, parse(try_from_str))]
+    #[structopt(long)]
     disable_ikev2: bool,
 
     // whether to bring IPsec SA up automatically
