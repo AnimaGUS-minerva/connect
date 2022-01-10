@@ -496,15 +496,17 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>,
 
         {
             let cl = child.lock().await;
-            let dl = cl.data.lock().await;
+            let mut dl = cl.data.lock().await;  // mutable because of write to ikev2_started
 
             if dl.disable_ikev2 == false && dl.ikev2_started == false {
                 // start IKEv2 daemon
                 openswan::OpenswanWhackInterface::openswan_start()
                     .await.expect("Openswan Did Not start correctly");
 
+                dl.ikev2_started = true;
+
                 // delay a bit to let it start up.
-                sleep(Duration::from_millis(300)).await;
+                sleep(Duration::from_millis(500)).await;
 
                 // set some default cdebug options for now
                 // DBG_CONTROL, bit 4
