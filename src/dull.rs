@@ -427,12 +427,12 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
 
         child_lo_up(&handle).await;
 
-        let mut debug = {
+        let (mut debug,ikev2_started) = {
             let  mychild = child.lock().await;
 
             let mut data = mychild.data.lock().await;
             data.handle  = Some(handle);
-            data.debug.clone()
+            (data.debug.clone(), data.ikev2_started)
         };
 
         while let Some((message, _)) = messages.next().await {
@@ -473,8 +473,11 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
 
                         // delay to let interfaces become stable.
                         sleep(Duration::from_millis(200)).await;
-                        // poke Openswan to rescan the list of interfaces
-                        openswan::OpenswanWhackInterface::openswan_setup().await.unwrap();
+
+                        if ikev2_started {
+                            // poke Openswan to rescan the list of interfaces
+                            openswan::OpenswanWhackInterface::openswan_setup().await.unwrap();
+                        }
                     }
                 }
                 InnerMessage(NewRoute(_thing)) => {
