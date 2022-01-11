@@ -93,7 +93,7 @@ struct ConnectOptions {
     disable_ikev2: bool,
 
     // whether to bring IPsec SA up automatically
-    #[structopt(default_value = "false", long, parse(try_from_str))]
+    #[structopt(default_value = "true", long, parse(try_from_str))]
     auto_up: bool,
 
     // list of interfaces to ignore when auto-configuring
