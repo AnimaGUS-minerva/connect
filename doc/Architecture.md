@@ -2,6 +2,7 @@ These are some random thoughts about implementation of RFC8994.
 
 Architecture
 ============
+
 There are some diagrams, container-arrangement.{png,svg,dia} and two-acp.{dia.svg} in this directory.
 
 This design is intended to live in hypervisors (Xen, KVM), in OpenWRT based switch systems, and in small boxes designed to bring RFC8994 functionality to existing systems.  For instance, a three port device could daisy chain to each other, while the third port connects to the management port of an enterprise switch, or IPMI interface.
