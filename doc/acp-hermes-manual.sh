@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# this script sets up two VTI connections in a pair of namespaces.
+# this script sets up two XFRM tunnels connections in a pair of namespaces,
 
 # namespace 1: DULL
 # namespace 2: ACP
@@ -26,11 +26,10 @@ sleep 5
 # ip link set work right.
 acppid=$(unshare -f -n sh -c 'sleep 1h >/dev/null& echo $!')
 dullpid=$(unshare -f -n sh -c 'sleep 1h >/dev/null& echo $!')
-ip netns attach dull $dullpid
-ip netns attach acp  $acppid
-mkdir -p /run/acp
 echo $dullpid >/run/acp/dull.pid
 echo $acppid  >/run/acp/acp.pid
+ip netns attach dull $dullpid
+ip netns attach acp  $acppid
 
 echo ACP: $acppid
 ps ax | grep $acppid
@@ -47,43 +46,38 @@ acp() {
     nsenter -t $acppid -n $*
 }
 
-dull ip link set lo up
-acp  ip link set lo up
-
 # put interface to first bridge in.
 ip link add t0 type veth peer t1
-ip link set t0 address 10:00:00:00:33:33
-ip link set t1 address 10:00:00:01:33:33
 ip link set t0 master $bridge1
 
 # move t1 end into dull
 ip link set t1 netns dull
 dull ip link set t1 up
-# avoid randomized LLv6 addr
-dull ip addr add fe80::3333/64 dev t1
 ip link set t0 up
+
+# avoid randomized LLv6 addr
+dull ip addr add fe80::4444/64 dev t1
 
 echo DULL SETUP
 read ans
-# stuff the ND table
-#dull ping -c1 fe80::2222
 
-# setup an IPsec tunnel SA.
-OSPI1=0x00300020
-ISPI1=0x00200030
-MARK1=0x1
+#dull bash
+
+# PEER 1 - hermes
+# PEER 2 - moira
+# PEER 3 - ovid
+
+# setup an IPsec tunnel SA 1: hermes<-->moira
+OSPI1=0x00100030
+ISPI1=0x00300010
+MARK1=0x2
+
+ME=fe80::4444
 THEM1=fe80::2222
 
-OSPI2=0x00300010
-ISPI2=0x00100030
-MARK2=0x2
-THEM2=fe80::1111
-
-ME=fe80::3333
-
 # set up the first SA
-cipher1=0xf6ddb555acfd9d77b03ea3843f265325
-integ1=0x96358c90783bbfa3d7b196ceabe0536b
+cipher1=0xf6ddb555acfd9d77b03ea3843f263255
+integ1=0x96358c90783bbfa3d7b196ceabe036b5
 algo=aes
 dull ip xfrm state add src $ME dst $THEM1 proto esp spi $OSPI1 \
         auth sha1 $integ1 \
@@ -97,25 +91,10 @@ dull ip xfrm state add src $THEM1 dst $ME proto esp spi $ISPI1 \
         mode tunnel \
         if_id $MARK1
 
-if false; then
-dull ip xfrm policy add src $ME/128 dst $THEM1/128 \
-     dir out ptype main \
-     action allow \
-     priority 100 \
-     if_id $MARK1
-fi
-
 dull ip xfrm policy add src ::/0 dst ::/0 \
         dir out ptype main \
         tmpl src $ME dst $THEM1 \
         proto esp mode tunnel \
-        if_id $MARK1
-
-if false; then
-dull ip xfrm policy add src $THEM1/128 dst $ME/128 \
-        dir in ptype main \
-        action allow \
-        priority 100 \
         if_id $MARK1
 
 dull ip xfrm policy add src ::/0 dst ::/0 \
@@ -123,44 +102,42 @@ dull ip xfrm policy add src ::/0 dst ::/0 \
         tmpl src $THEM1 dst $ME \
         proto esp mode tunnel \
         if_id $MARK1
-fi
-
-dull sysctl -w net.ipv6.conf.t1.disable_policy=1
 
 # stuff the ND table
-#dull ip -6 neigh add $THEM1 lladdr 10:00:00:01:22:22 dev t1
+#dull ip -6 neigh add $THEM1 lladdr 10:00:00:00:22:22 dev t1
 
-# create a VTI interface in DULL, connected to $MARK1, move it to ACP.
+# create an xfrm-interface in DULL, move it to ACP.
 dull ip link add acp_001 type xfrm if_id $MARK1
-dull ip link ls
+#dull ip -6 tunnel add acp_001 mode vti6 local $ME remote $THEM1 key $MARK1
+#dull ip link ls
 
+#set -x
+#echo MOVING interfaces
+#acp ip link ls
 dull ip link set acp_001 netns $acppid
+dull ip link set acp_001 up
+
 echo MOVED interface
 
 acp ip link set acp_001 up
-acp ip addr add fe80::1:3333/64 dev acp_001
-#acp sysctl -w net.ipv6.conf.acp_001.disable_policy=1
-#acp sysctl -w net.ipv4.conf.acp_001.disable_policy=1
-acp ip link ls
-
-dull ip xfrm state ls
-
-echo HIT ENTER TO PING
-read ans
+acp ip addr add fe80::1:4444/64 dev acp_001
+acp sysctl -w net.ipv6.conf.acp_001.disable_policy=1
+#acp ip link ls
 
 #dull tcpdump -X -e -i any -n -p esp -w espstuff.pcap &
-dull tcpdump -e -i any -n -p ip6 and not port 5353 &
+#dull tcpdump -e -i any -n -p ip6 and not port 5353 &
+dull tcpdump -e -i any -n -p esp &
 tcpdumppid=$!
-acp ping6 -c1 fe80::1:2222%acp_001
-#acp ping6 -c1 fe80::1:1111%acp_002
 
-sleep 5;
+echo HIT ENTER TO START PING
+read ans
+acp ping6 -c1 fe80::1:2222%acp_001
 
 echo HIT ENTER TO END
 read ans
+
 killall tcpdump
 ip netns delete dull
 ip netns delete acp
-ip link delete t0
 kill $acppid
 kill $dullpid
