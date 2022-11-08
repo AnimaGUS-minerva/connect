@@ -97,8 +97,8 @@ dull ip xfrm state add src $THEM1 dst $ME proto esp spi $ISPI1 \
         mode tunnel \
         if_id $MARK1
 
-if false; then
-dull ip xfrm policy add src $ME/128 dst $THEM1/128 \
+if true; then
+dull ip xfrm policy add src fe80::/64 dst fe80::/64 proto ipv6-icmp \
      dir out ptype main \
      action allow \
      priority 100 \
@@ -111,8 +111,8 @@ dull ip xfrm policy add src ::/0 dst ::/0 \
         proto esp mode tunnel \
         if_id $MARK1
 
-if false; then
-dull ip xfrm policy add src $THEM1/128 dst $ME/128 \
+if true; then
+dull ip xfrm policy add src fe80::/64 dst fe80::/64 proto ipv6-icmp \
         dir in ptype main \
         action allow \
         priority 100 \
@@ -125,7 +125,7 @@ dull ip xfrm policy add src ::/0 dst ::/0 \
         if_id $MARK1
 fi
 
-dull sysctl -w net.ipv6.conf.t1.disable_policy=1
+#dull sysctl -w net.ipv6.conf.t1.disable_policy=1
 
 # stuff the ND table
 #dull ip -6 neigh add $THEM1 lladdr 10:00:00:01:22:22 dev t1
