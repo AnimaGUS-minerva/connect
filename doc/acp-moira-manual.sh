@@ -149,7 +149,7 @@ acp ip addr add fe80::1:2222/64 dev acp_001
 #acp sysctl -w net.ipv6.conf.acp_001.disable_policy=1
 #acp ip link ls
 
-if false
+if true
 then
 # set up the second SA
 cipher2=0xf6ddb555acfd9d77b03ea3843f263255
