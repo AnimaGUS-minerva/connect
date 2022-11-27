@@ -1,3 +1,5 @@
+// manually translated from whack_values.h
+
 #[allow(non_camel_case_types)]
 pub enum whack_message_keys {
   WHACK_STATUS = 1,
@@ -100,6 +102,7 @@ pub enum connectionend_keys {
   WHACK_OPT_END_HOST_NEXTHOP = 12,
   WHACK_OPT_END_HOST_SRCIP = 13,
   WHACK_OPT_END_CLIENT = 14,
+  WHACK_OPT_IFID     = 147,
 }
 
 #[allow(non_camel_case_types)]

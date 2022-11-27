@@ -215,7 +215,7 @@ impl OpenswanWhackInterface {
 
     pub fn encode_ll_policy(myllv6:    Ipv6Addr,
                             eyllv6:    Ipv6Addr,
-                            vtinum:    u32) -> (Vec<u8>,String) {
+                            ifid:      u32) -> (Vec<u8>,String) {
 
 
         let mut octets_ey = eyllv6.octets();
@@ -243,9 +243,9 @@ impl OpenswanWhackInterface {
                         CborType::Integer(255));  /* enum keyword_host == KH_IPADDR */
         left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_CERTPOLICY as u64),
                         CborType::Integer(3));    /* enum certpolicy == cert_alwayssend */
-        if vtinum != 0 {
-            left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_VTINUM as u64),
-                            CborType::Integer(vtinum as u64));
+        if ifid != 0 {
+            left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_IFID as u64),
+                            CborType::Integer(ifid as u64));
         }
 
         let left_cbor = CborType::Map(left_map);
@@ -302,12 +302,12 @@ impl OpenswanWhackInterface {
 
     }
 
-    pub async fn add_adjacency(_vtiiface: &String,
-                               vtinum:    u32,
+    pub async fn add_adjacency(_ifidiface: &String,
+                               ifid:      u32,
                                myllv6:    Ipv6Addr,
                                eyllv6:    Ipv6Addr) -> Result<String, std::io::Error> {
 
-        let (encoded_policy, policy_name) = OpenswanWhackInterface::encode_ll_policy(myllv6, eyllv6, vtinum);
+        let (encoded_policy, policy_name) = OpenswanWhackInterface::encode_ll_policy(myllv6, eyllv6, ifid);
 
         let results = OpenswanWhackInterface::openswan_send_cmd(encoded_policy).await.unwrap();
         println!("status\n{}", results);

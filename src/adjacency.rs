@@ -29,7 +29,7 @@ use tokio::process::Command;
 
 use crate::dull::DullInterface;
 use crate::grasp;
-use crate::vtitun;
+use crate::acptun;
 use crate::openswan::OpenswanWhackInterface;
 
 #[derive(Debug)]
@@ -40,8 +40,8 @@ pub struct Adjacency {
     pub ikeport:       u16,
     pub advertisement_count:      u32,
     pub tunnelup:      bool,
-    pub vti_iface:     String,
-    pub vti_number:    Option<u16>,
+    pub acp_iface:     String,
+    pub acp_number:    Option<u16>,
     pub openswan_reference: Option<String>,
 }
 
@@ -58,8 +58,8 @@ impl Adjacency {
         Adjacency { interface: di.clone(),
                     v6addr:    Ipv6Addr::UNSPECIFIED,
                     ikeport:   0,
-                    vti_number: None,
-                    vti_iface:  "".to_string(),
+                    acp_number: None,
+                    acp_iface:  "".to_string(),
                     ifindex:   0,
                     advertisement_count: 0,
                     openswan_reference:  None,
@@ -97,7 +97,7 @@ impl Adjacency {
         return None;
     }
 
-    pub async fn make_vti(self: &mut Adjacency) -> Result<(), rtnetlink::Error> {
+    pub async fn make_acp(self: &mut Adjacency) -> Result<(), rtnetlink::Error> {
 
         let handle;
         let vn;
@@ -109,8 +109,8 @@ impl Adjacency {
         };
 
         let mut dc = lgd.dullchild.lock().await;
-        vn = dc.allocate_vti();
-        self.vti_number = Some(vn);
+        vn = dc.allocate_ifid();
+        self.acp_number = Some(vn);
 
         let dd = dc.data.lock().await;
         let acpns = dd.acpns;
@@ -120,37 +120,37 @@ impl Adjacency {
             Some(handle) => handle
         };
 
-        self.vti_iface  = format!("acp_{:03}", vn);
+        self.acp_iface  = format!("acp_{:03}", vn);
         let laddr = ifn.linklocal6.clone();
         let raddr = self.v6addr.clone();
 
-        vtitun::create(&self.vti_iface, ifn.ifindex, laddr, raddr, vn).unwrap();
+        acptun::create(&handle, &self.acp_iface, ifn.ifindex, laddr, raddr, vn).unwrap();
 
-        let mut vtiresult = handle.link().get().match_name(self.vti_iface.clone()).execute();
-        let vti_next = vtiresult.try_next().await;
-        let vti_result = match vti_next {
+        let mut acpresult = handle.link().get().match_name(self.acp_iface.clone()).execute();
+        let acp_next  = acpresult.try_next().await;
+        let acp_result = match acp_next {
             Err(repr) => { return Err(repr) },
-            Ok(vtiresult) => vtiresult
+            Ok(acpresult) => acpresult
         };
-        let vti_link = match vti_result {
+        let acp_link = match acp_result {
             Some(link) => link,
             None => {
-                println!("did not find interface {}", self.vti_iface);
+                println!("did not find interface {}", self.acp_iface);
                 return Err(rtnetlink::Error::RequestFailed);
             }
         };
         println!("created new ACP interface {} with ifindex: {}, moved to NS {}",
-                 self.vti_iface,
-                 vti_link.header.index,
+                 self.acp_iface,
+                 acp_link.header.index,
                  acpns);
 
-        handle.link().set(vti_link.header.index).up().execute().await?;
+        handle.link().set(acp_link.header.index).up().execute().await?;
 
         if true {
             // now move this created entity to the ACP NS.
             handle
                 .link()
-                .set(vti_link.header.index)
+                .set(acp_link.header.index)
                 .setns_by_pid(acpns.as_raw() as u32)
                 .execute()
                 .await?;
@@ -160,9 +160,9 @@ impl Adjacency {
     }
 
     pub async fn up(self: &mut Adjacency, auto_up: bool, disable_ikev2: bool) -> Result<(), rtnetlink::Error> {
-        // A VTI will have been assigned already if we already trying to bring a tunnel up.
-        if self.vti_number == None {
-            self.make_vti().await?;
+        // A ACP will have been assigned already if we already trying to bring a tunnel up.
+        if self.acp_number == None {
+            self.make_acp().await?;
         } else {
             return Ok(());
         }
@@ -172,25 +172,25 @@ impl Adjacency {
             ifn.linklocal6
         };
 
-        let vtinum     = self.vti_number.unwrap();
-        let vtinum_str = format!("{}", vtinum);
+        let ifid     = self.acp_number.unwrap();
+        let ifid_str = format!("{}", ifid);
 
-        println!("index: {} adding (adv:{}) for {} (vtinum: {})", self.ifindex,
+        println!("index: {} adding (adv:{}) for {} (ifid: {})", self.ifindex,
                  self.advertisement_count,
-                 self.v6addr, vtinum_str);
+                 self.v6addr, ifid_str);
 
         if disable_ikev2 {
             // but for now, run a script to do it manually.
             let _command = Command::new("/root/tunnel")
-                .arg(self.vti_iface.to_string())
-                .arg(vtinum_str)
+                .arg(self.acp_iface.to_string())
+                .arg(ifid_str)
                 .arg(myll6addr.to_string())
                 .arg(self.v6addr.to_string())
                 .spawn().unwrap();
         } else {
             self.openswan_reference =
-                Some(OpenswanWhackInterface::add_adjacency(&self.vti_iface,
-                                                           vtinum as u32,
+                Some(OpenswanWhackInterface::add_adjacency(&self.acp_iface,
+                                                           ifid as u32,
                                                            myll6addr,
                                                            self.v6addr).await.unwrap());
             if auto_up {
@@ -198,7 +198,7 @@ impl Adjacency {
                     // now up the interface after a random delay, 0 to 255ms.
                     let delay_time: u8 = rand::random::<u8>();
                     sleep(Duration::from_millis(delay_time as u64)).await;
-                    
+
                     OpenswanWhackInterface::up_adjacency(&osw_name).await.unwrap();
                 }
             } else {

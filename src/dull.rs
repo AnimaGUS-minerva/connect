@@ -83,7 +83,10 @@ pub struct DullInit {
     pub dullpid:       Pid
 }
 
-/* This structure is present in the parent to represent the DULL */
+/*
+ * This structure is present in the parent to represent the DULL, after
+ * async/tokio is initialized
+ */
 pub struct Dull {
     pub debug:         DebugOptions,
     pub child_stream:  control::ControlStream,
@@ -372,7 +375,7 @@ pub struct DullChild {
     //pub parent_stream: Arc<tokio::net::UnixStream>,
     pub runtime:       Arc<tokio::runtime::Runtime>,
     pub data:          Mutex<DullData>,
-    pub vti_number:     u16,
+    pub ifid_number:   u16,
     pub netlink_handle: Option<tokio::task::JoinHandle<Result<(),Error>>>,
 }
 
@@ -390,13 +393,13 @@ impl DullChild {
 
         Arc::new(Mutex::new(DullChild { runtime:        Arc::new(rt),
                                         netlink_handle: None,
-                                        vti_number:     1,
+                                        ifid_number:     1,
                                         data:           Mutex::new(DullData::empty()) }))
     }
 
-    pub fn allocate_vti(self: &mut DullChild) -> u16 {
-        let number = self.vti_number;
-        self.vti_number += 1;
+    pub fn allocate_ifid(self: &mut DullChild) -> u16 {
+        let number = self.ifid_number;
+        self.ifid_number += 1;
         return number;
     }
 }
@@ -725,7 +728,7 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
                 .unwrap();
 
             let childinfo = DullChild { runtime:        Arc::new(rt),
-                                        vti_number:     1,
+                                        ifid_number:    1,
                                         netlink_handle: None,
                                         data:           Mutex::new(DullData::empty()),
             };
