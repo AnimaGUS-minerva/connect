@@ -408,18 +408,18 @@ a1                                      # map(1)
    a6                                   # map(6)
       01                                # unsigned(1)
       73                                # text(19)
-         635f66656438616262615f6665313638383562 # c_fed8abba_fe16885b
+         635f66656438616262615f6665313638383562
       03                                # unsigned(3)
       ab                                # map(11)
          05                             # unsigned(5)
          65                             # text(5)
-            2563657274                  # %cert
+            2563657274
          06                             # unsigned(6)
          6c                             # text(12)
-            686f7374636572742e70656d    # hostcert.pem
+            686f7374636572742e70656d
          07                             # unsigned(7)
          78 49                          # text(73)
-            44433d63612f44433d73616e64656c6d616e2f434e3d666f756e7461696e2d746573742e6578616d706c652e636f6d20556e737472756e6720466f756e7461696e20526f6f74204341 # DC=ca/DC=sandelman/CN=fountain-test.example.com Unstrung Fountain Root CA
+            44433d63612f44433d73616e64656c6d616e2f434e3d666f756e7461696e2d746573742e6578616d706c652e636f6d20556e737472756e6720466f756e7461696e20526f6f74204341
          0b                             # unsigned(11)
          d8 36                          # tag(54)
             50                          # bytes(16)
@@ -440,16 +440,16 @@ a1                                      # map(1)
          19 01f4                        # unsigned(500)
          18 8f                          # unsigned(143)
          03                             # unsigned(3)
-         18 91                          # unsigned(145)
+         18 93                          # unsigned(147)
          04                             # unsigned(4)
       04                                # unsigned(4)
       a7                                # map(7)
          05                             # unsigned(5)
          63                             # text(3)
-            453d2a                      # E=*
+            453d2a
          07                             # unsigned(7)
          65                             # text(5)
-            2573616d65                  # %same
+            2573616d65
          0b                             # unsigned(11)
          d8 36                          # tag(54)
             50                          # bytes(16)
