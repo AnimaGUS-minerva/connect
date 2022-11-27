@@ -41,16 +41,19 @@ pub fn create(_handle:  &Handle,
 mod tests {
     use super::*;
     use nix::unistd::Uid;
+    use rtnetlink::{new_connection};
 
     #[test]
-    fn test_vtitun() {
+    fn test_acptun() {
         let tunname = "test6";
         let tunloc  = "fe80::5054:ff:fe51:12bc".parse::<Ipv6Addr>().unwrap();
         let tunrem  = "fe80::5054:ff:fe51:daff".parse::<Ipv6Addr>().unwrap();
         let physdev_ifindex = 1;  /* usually loopback */
 
+        let (_connection, handle, _messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
+
         if Uid::current().is_root() {
-            let x = create(tunname, physdev_ifindex, tunloc, tunrem, 7);
+            let x = create(&handle, tunname, physdev_ifindex, tunloc, tunrem, 7);
             assert_eq!(x.is_ok(), true);
         }
     }
