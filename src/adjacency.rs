@@ -124,7 +124,7 @@ impl Adjacency {
         let laddr = ifn.linklocal6.clone();
         let raddr = self.v6addr.clone();
 
-        acptun::create(&handle, &self.acp_iface, ifn.ifindex, laddr, raddr, vn).unwrap();
+        acptun::create(&handle, &self.acp_iface, ifn.ifindex, laddr, raddr, vn).await.unwrap();
 
         let mut acpresult = handle.link().get().match_name(self.acp_iface.clone()).execute();
         let acp_next  = acpresult.try_next().await;

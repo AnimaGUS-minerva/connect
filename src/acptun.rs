@@ -22,14 +22,14 @@ use std::net::Ipv6Addr;
 use crate::dull::IfIndex;
 use rtnetlink::{Handle};
 
-pub fn create(_handle:  &Handle,
-              _tunname: &str,
-              _physdev_index: IfIndex,
-              _tunloc: Ipv6Addr,
-              _tunrem: Ipv6Addr,
-              _tunkey: u16) -> Result<(), std::io::Error> {
+pub async fn create(handle:  &Handle,
+                    tunname: &str,
+                    _physdev_index: IfIndex,
+                    _tunloc: Ipv6Addr,
+                    _tunrem: Ipv6Addr,
+                    tunkey: u16) -> Result<(), rtnetlink::Error> {
 
-    return Ok(());
+    handle.link().add().xfrmtun(tunname.to_string(), tunkey.into()).execute().await
 }
 
 
@@ -43,17 +43,26 @@ mod tests {
     use nix::unistd::Uid;
     use rtnetlink::{new_connection};
 
-    #[test]
-    fn test_acptun() {
+    macro_rules! aw {
+        ($e:expr) => {
+            tokio_test::block_on($e)
+        };
+    }
+
+    async fn test_acptun_create() -> Result<(), rtnetlink::Error> {
         let tunname = "test6";
         let tunloc  = "fe80::5054:ff:fe51:12bc".parse::<Ipv6Addr>().unwrap();
         let tunrem  = "fe80::5054:ff:fe51:daff".parse::<Ipv6Addr>().unwrap();
         let physdev_ifindex = 1;  /* usually loopback */
 
         let (_connection, handle, _messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
+        create(&handle, tunname, physdev_ifindex, tunloc, tunrem, 7).await
+    }
 
+    #[test]
+    fn test_acptun() {
         if Uid::current().is_root() {
-            let x = create(&handle, tunname, physdev_ifindex, tunloc, tunrem, 7);
+            let x = aw!(test_acptun_create());
             assert_eq!(x.is_ok(), true);
         }
     }

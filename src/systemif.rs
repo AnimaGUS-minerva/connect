@@ -558,7 +558,7 @@ mod tests {
     use super::*;
     use netlink_packet_route::LinkHeader;
     use netlink_packet_route::link::nlas::Nla;
-    use netlink_packet_route::constants::*;
+    //use netlink_packet_route::constants::*;
 
     struct FakeNetlinkInterface {
     }
@@ -630,8 +630,8 @@ mod tests {
     }
 
     fn make_a_lone_if() -> netlink_packet_route::LinkMessage {
-        use netlink_packet_route::link::nlas::Info;
-        use netlink_packet_route::link::nlas::InfoKind;
+        //use netlink_packet_route::link::nlas::Info;
+        //use netlink_packet_route::link::nlas::InfoKind;
 
         LinkMessage {
             header: LinkHeader {
