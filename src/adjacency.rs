@@ -194,6 +194,13 @@ impl Adjacency {
                                                            myll6addr,
                                                            self.v6addr).await.unwrap());
             if auto_up {
+                let myll6addr_str = format!("{}", myll6addr);
+                let _adjacencycmd = Command::new("/root/newadj")
+                                                 .arg(ifid_str)
+                                                 .arg(myll6addr_str)
+                                                 .arg(self.v6addr.to_string())
+                                                 .spawn().unwrap();
+
                 if let Some(osw_name) = &self.openswan_reference {
                     // now up the interface after a random delay, 0 to 255ms.
                     let delay_time: u8 = rand::random::<u8>();
