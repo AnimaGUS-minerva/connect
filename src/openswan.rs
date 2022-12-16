@@ -213,11 +213,8 @@ impl OpenswanWhackInterface {
         end_map
     }
 
-    pub fn encode_ll_policy(myllv6:    Ipv6Addr,
-                            eyllv6:    Ipv6Addr,
-                            ifid:      u32) -> (Vec<u8>,String) {
-
-
+    pub fn pair_name(myllv6:    Ipv6Addr,
+                     eyllv6:    Ipv6Addr) -> String {
         let mut octets_ey = eyllv6.octets();
         let mut octets_me = myllv6.octets();
         if octets_ey[15] > octets_me[15] {
@@ -229,6 +226,13 @@ impl OpenswanWhackInterface {
         let policy_name = format!("c_{:02x}{:02x}{:02x}{:02x}_{:02x}{:02x}{:02x}{:02x}",
                                   octets_me[12], octets_me[13], octets_me[14], octets_me[15],
                                   octets_ey[12], octets_ey[13], octets_ey[14], octets_ey[15]);
+        return policy_name;
+    }
+
+    pub fn encode_ll_policy(myllv6:    Ipv6Addr,
+                            eyllv6:    Ipv6Addr,
+                            name:      &String,
+                            ifid:      u32) -> Vec<u8> {
 
         let mut left_map = OpenswanWhackInterface::encode_end_policy(myllv6);
         left_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_KEYTYPE as u64),
@@ -260,8 +264,10 @@ impl OpenswanWhackInterface {
         let right_cbor = CborType::Map(right_map);
 
         let mut connection_map: BTreeMap<CborType, CborType> = BTreeMap::new();
+
+        let policy_name = "c_".to_owned() + &name.clone();
         connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_NAME as u64),
-                              CborType::String(policy_name.clone()));
+                              CborType::String(policy_name));
 
         connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_LEFT as u64),
                               left_cbor);
@@ -298,21 +304,22 @@ impl OpenswanWhackInterface {
         command_map.insert(CborType::Integer(openswanwhack::whack_message_keys::WHACK_CONNECTION as u64),
                            CborType::Map(connection_map));
 
-        return (CborType::Map(command_map).serialize(), policy_name);
+        return CborType::Map(command_map).serialize()
 
     }
 
     pub async fn add_adjacency(_ifidiface: &String,
                                ifid:      u32,
+                               name:      &String,
                                myllv6:    Ipv6Addr,
-                               eyllv6:    Ipv6Addr) -> Result<String, std::io::Error> {
+                               eyllv6:    Ipv6Addr) -> Result<(), std::io::Error> {
 
-        let (encoded_policy, policy_name) = OpenswanWhackInterface::encode_ll_policy(myllv6, eyllv6, ifid);
+        let encoded_policy = OpenswanWhackInterface::encode_ll_policy(myllv6, eyllv6,name, ifid);
 
         let results = OpenswanWhackInterface::openswan_send_cmd(encoded_policy).await.unwrap();
         println!("status\n{}", results);
 
-        Ok(policy_name)
+        Ok(())
     }
 
     pub fn up_encoded(policy_name: &String) -> Vec<u8> {
@@ -401,7 +408,7 @@ A1                                      # map(1)
         let myllv6 = "fe80::609c:62ff:fed8:abba".parse::<Ipv6Addr>().unwrap();
         let eyllv6 = "fe80::5835:02ff:fe16:885b".parse::<Ipv6Addr>().unwrap();
 
-        let (encoded_policy,_policy_name) = OpenswanWhackInterface::encode_ll_policy(myllv6, eyllv6, 4);
+        let encoded_policy = OpenswanWhackInterface::encode_ll_policy(myllv6, eyllv6, &"fed8abba_fe16885b".to_string(), 4);
         assert_eq!(encoded_policy, hex!("
 a1                                      # map(1)
    04                                   # unsigned(4)

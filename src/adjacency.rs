@@ -42,7 +42,8 @@ pub struct Adjacency {
     pub tunnelup:      bool,
     pub acp_iface:     String,
     pub acp_number:    Option<u16>,
-    pub openswan_reference: Option<String>,
+    pub openswan_loaded: bool,
+    pub pair_name:     String,
 }
 
 impl fmt::Display for Adjacency {
@@ -62,7 +63,8 @@ impl Adjacency {
                     acp_iface:  "".to_string(),
                     ifindex:   0,
                     advertisement_count: 0,
-                    openswan_reference:  None,
+                    openswan_loaded: false,
+                    pair_name: "none".to_string(),
                     tunnelup:  false }
     }
 
@@ -189,11 +191,15 @@ impl Adjacency {
                 .arg(self.v6addr.to_string())
                 .spawn().unwrap();
         } else {
-            self.openswan_reference =
-                Some(OpenswanWhackInterface::add_adjacency(&self.acp_iface,
-                                                           ifid as u32,
-                                                           myll6addr,
-                                                           self.v6addr).await.unwrap());
+            self.pair_name = OpenswanWhackInterface::pair_name(myll6addr,
+                                                               self.v6addr);
+
+            OpenswanWhackInterface::add_adjacency(&self.acp_iface,
+                                                  ifid as u32,
+                                                  &self.pair_name,
+                                                  myll6addr,
+                                                  self.v6addr).await.unwrap();
+            self.openswan_loaded = true;
             if auto_up {
                 let myll6addr_str = format!("{}", myll6addr);
                 let _adjacencycmd = Command::new("/root/newadj")
@@ -202,13 +208,11 @@ impl Adjacency {
                                                  .arg(self.v6addr.to_string())
                                                  .spawn().unwrap();
 
-                if let Some(osw_name) = &self.openswan_reference {
-                    // now up the interface after a random delay, 0 to 255ms.
-                    let delay_time: u8 = rand::random::<u8>();
-                    sleep(Duration::from_millis(delay_time as u64)).await;
+                // now up the interface after a random delay, 0 to 255ms.
+                let delay_time: u8 = rand::random::<u8>();
+                sleep(Duration::from_millis(delay_time as u64)).await;
 
-                    OpenswanWhackInterface::up_adjacency(&osw_name).await.unwrap();
-                }
+                OpenswanWhackInterface::up_adjacency(&self.pair_name).await.unwrap();
             } else {
                 println!("Auto-Up is set to false");
             }
