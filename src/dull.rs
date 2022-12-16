@@ -517,8 +517,12 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>,
                 // set some default cdebug options for now
                 // DBG_CONTROL, bit 4
                 // DBG_CONTROLMORE, bit 9
-                openswan::OpenswanWhackInterface::openswan_some_debug((1<<4)|(1<<9))
-                    .await.unwrap();
+                //let oswdebug = (1<<4)|(1<<9);
+                let oswdebug = (1<<4)|0;
+                if oswdebug != 0 {
+                    openswan::OpenswanWhackInterface::openswan_some_debug(oswdebug)
+                        .await.unwrap();
+                }
 
             } else if dl.disable_ikev2 == true && dl.ikev2_started == true {
                 // stop  IKEv2 daemon
