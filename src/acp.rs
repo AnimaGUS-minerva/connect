@@ -420,12 +420,11 @@ pub async fn process_control(child: Arc<Mutex<AcpChild>>, mut cs: ControlStream)
                          */
                     }
 
-                    Command::new("sbin/sunshine -K")
+                    let _result = Command::new("sbin/sunshine -K")
                         .stdin(Stdio::null())
                         .stdout(Stdio::inherit())
                         .stderr(Stdio::inherit())
-                        .status()
-                        .expect("Unstrung kill");
+                        .status().unwrap();
 
                     /* kill self and all threads */
                     std::process::exit(0);
