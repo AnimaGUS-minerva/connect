@@ -120,9 +120,10 @@ impl Adjacency {
             Some(handle) => handle
         };
 
-        self.acp_iface  = format!("acp_{:03}", vn);
         let laddr = ifn.linklocal6.clone();
         let raddr = self.v6addr.clone();
+        self.acp_iface  = format!("acp_{:#02}{:#02}",
+                                  laddr.segments()[7], raddr.segments()[7]);
 
         acptun::create(&handle, &self.acp_iface, ifn.ifindex, laddr, raddr, vn).await.unwrap();
 
@@ -139,9 +140,9 @@ impl Adjacency {
                 return Err(rtnetlink::Error::RequestFailed);
             }
         };
-        println!("created new ACP interface {} with ifindex: {}, moved to NS {}",
+        println!("created new ACP interface {} with ifindex: {} ({}), moved to NS {}",
                  self.acp_iface,
-                 acp_link.header.index,
+                 acp_link.header.index, vn,
                  acpns);
 
         handle.link().set(acp_link.header.index).up().execute().await?;
