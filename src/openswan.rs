@@ -223,10 +223,10 @@ impl OpenswanWhackInterface {
             octets_me = octets_ey;
             octets_ey = tmp;
         }
-        let policy_name = format!("c_{:02x}{:02x}{:02x}{:02x}_{:02x}{:02x}{:02x}{:02x}",
-                                  octets_me[12], octets_me[13], octets_me[14], octets_me[15],
-                                  octets_ey[12], octets_ey[13], octets_ey[14], octets_ey[15]);
-        return policy_name;
+        let pair_name = format!("{:02x}{:02x}_{:02x}{:02x}",
+                                octets_me[14], octets_me[15],
+                                octets_ey[14], octets_ey[15]);
+        return pair_name;
     }
 
     pub fn encode_ll_policy(myllv6:    Ipv6Addr,
@@ -265,9 +265,8 @@ impl OpenswanWhackInterface {
 
         let mut connection_map: BTreeMap<CborType, CborType> = BTreeMap::new();
 
-        let policy_name = "c_".to_owned() + &name.clone();
         connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_NAME as u64),
-                              CborType::String(policy_name));
+                              CborType::String(name.clone()));
 
         connection_map.insert(CborType::Integer(openswanwhack::connection_keys::WHACK_OPT_LEFT as u64),
                               left_cbor);

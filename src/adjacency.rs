@@ -124,8 +124,9 @@ impl Adjacency {
 
         let laddr = ifn.linklocal6.clone();
         let raddr = self.v6addr.clone();
-        self.acp_iface  = format!("acp_{:#02}{:#02}",
-                                  laddr.segments()[7], raddr.segments()[7]);
+
+        self.pair_name = OpenswanWhackInterface::pair_name(laddr, raddr);
+        self.acp_iface  = format!("acp_{}", self.pair_name);
 
         acptun::create(&handle, &self.acp_iface, ifn.ifindex, laddr, raddr, vn).await.unwrap();
 
@@ -191,12 +192,10 @@ impl Adjacency {
                 .arg(self.v6addr.to_string())
                 .spawn().unwrap();
         } else {
-            self.pair_name = OpenswanWhackInterface::pair_name(myll6addr,
-                                                               self.v6addr);
-
+            let policy_name = format!("c_{}", self.pair_name);
             OpenswanWhackInterface::add_adjacency(&self.acp_iface,
                                                   ifid as u32,
-                                                  &self.pair_name,
+                                                  &policy_name,
                                                   myll6addr,
                                                   self.v6addr).await.unwrap();
             self.openswan_loaded = true;
@@ -212,7 +211,7 @@ impl Adjacency {
                 let delay_time: u8 = rand::random::<u8>();
                 sleep(Duration::from_millis(delay_time as u64)).await;
 
-                OpenswanWhackInterface::up_adjacency(&self.pair_name).await.unwrap();
+                OpenswanWhackInterface::up_adjacency(&policy_name).await.unwrap();
             } else {
                 println!("Auto-Up is set to false");
             }
