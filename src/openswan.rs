@@ -136,6 +136,7 @@ impl OpenswanWhackInterface {
     pub async fn openswan_start() -> Result<ExitStatus, std::io::Error> {
 
         Command::new("modprobe")
+            .arg("-q")
             .arg("af_key").status().await.unwrap();
 
         //eprintln!("Waiting for openswan start at pid {}\n", nix::unistd::getpid());
