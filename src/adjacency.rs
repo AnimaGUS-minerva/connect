@@ -128,6 +128,8 @@ impl Adjacency {
         self.pair_name = OpenswanWhackInterface::pair_name(laddr, raddr);
         self.acp_iface  = format!("acp_{}", self.pair_name);
 
+        println!("calling acp_tun with {} pair={}", self.acp_iface, self.pair_name);
+
         acptun::create(&handle, &self.acp_iface, ifn.ifindex, laddr, raddr, vn).await.unwrap();
 
         let mut acpresult = handle.link().get().match_name(self.acp_iface.clone()).execute();
