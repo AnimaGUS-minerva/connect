@@ -209,9 +209,13 @@ impl Adjacency {
                                                  .arg(self.v6addr.to_string())
                                                  .spawn().unwrap();
 
-                // now up the interface after a random delay, 0 to 255ms.
-                let delay_time: u8 = rand::random::<u8>();
-                sleep(Duration::from_millis(delay_time as u64)).await;
+                // now up the interface after a delay inspired by the
+                // lowest octet of the IPv6-LL.   This results in both
+                // sides deterministically agreeing on one side to initiate,
+                // but both sides will try.  100 + 0-255 * 3 ~ 1s delay.
+                let delay_time: u64 = 100 + (myll6addr.octets()[15] as u64) * 3;
+                println!("waiting {}ms before activating {}", delay_time, policy_name);
+                sleep(Duration::from_millis(delay_time)).await;
 
                 OpenswanWhackInterface::up_adjacency(&policy_name).await.unwrap();
             } else {
