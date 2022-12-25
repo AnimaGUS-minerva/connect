@@ -203,13 +203,15 @@ impl OpenswanWhackInterface {
     pub fn encode_end_policy(v6: Ipv6Addr) -> BTreeMap<CborType, CborType> {
         let mut end_map: BTreeMap<CborType, CborType> = BTreeMap::new();
         end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_HOST_ADDR as u64),
-                        OpenswanWhackInterface::encode_v6_addr(v6));
+                       OpenswanWhackInterface::encode_v6_addr(v6));
         end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_CLIENT as u64),
-                        OpenswanWhackInterface::encode_v6_prefix(Ipv6Addr::UNSPECIFIED, 0));
+                       OpenswanWhackInterface::encode_v6_prefix(Ipv6Addr::UNSPECIFIED, 0));
         end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HOST_PORT  as u64),
-                        CborType::Integer(500));
+                       CborType::Integer(500));
         end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_HAS_CLIENT as u64),
-                        CborType::Integer(1));
+                       CborType::Integer(1));
+        end_map.insert(CborType::Integer(openswanwhack::connectionend_keys::WHACK_OPT_END_UPDOWN as u64),
+                       CborType::String("/bin/true".to_string()));
 
         end_map
     }
@@ -414,10 +416,10 @@ a1                                      # map(1)
    04                                   # unsigned(4)
    a6                                   # map(6)
       01                                # unsigned(1)
-      73                                # text(19)
-         635f66656438616262615f6665313638383562
+      71                                # text(17)
+         66656438616262615f6665313638383562
       03                                # unsigned(3)
-      ab                                # map(11)
+      ac                                # map(12)
          05                             # unsigned(5)
          65                             # text(5)
             2563657274
@@ -449,8 +451,11 @@ a1                                      # map(1)
          03                             # unsigned(3)
          18 93                          # unsigned(147)
          04                             # unsigned(4)
+         18 94                          # unsigned(148)
+         69                             # text(9)
+            2f62696e2f74727565
       04                                # unsigned(4)
-      a7                                # map(7)
+      a8                                # map(8)
          05                             # unsigned(5)
          63                             # text(3)
             453d2a
@@ -473,6 +478,9 @@ a1                                      # map(1)
          01                             # unsigned(1)
          14                             # unsigned(20)
          19 01f4                        # unsigned(500)
+         18 94                          # unsigned(148)
+         69                             # text(9)
+            2f62696e2f74727565
       18 7f                             # unsigned(127)
       1a 0681006e                       # unsigned(109117550)
       18 92                             # unsigned(146)
