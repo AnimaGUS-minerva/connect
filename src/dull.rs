@@ -423,7 +423,7 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
 
         // A netlink socket address is created with said flags.
         let addr = SocketAddr::new(0, mgroup_flags);
-        // Said address is bound so new conenctions and thus new message broadcasts can be received.
+        // Said address is bound so new connections and thus new message broadcasts can be received.
         connection.socket_mut().socket_mut().bind(&addr).expect("failed to bind");
         //connection.socket_mut().as_raw_fd().set_close_on_exec(false)?;
         rt.spawn(connection);
@@ -487,7 +487,7 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
                     /* just ignore these! */
                 }
                 //_ => { println!("generic message type: {} skipped", payload.message_type()); }
-                _ => { debug.debug_info(format!("msg type: {:?}", payload)); }
+                _ => { debug.debug_info(format!("listen_network msg type: {:?}", payload)); }
             }
         };
         Ok(())

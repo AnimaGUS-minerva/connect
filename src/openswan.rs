@@ -165,6 +165,7 @@ impl OpenswanWhackInterface {
 
     pub async fn openswan_setup() -> Result<(), std::io::Error> {
         // do two setup functions on Openswan pluto.
+        println!("asking Openswan to rescan");
 
         // 1. tell it to pay attention to link-local addresses.
         // 2. tell it to scan the list of interfaces
@@ -172,8 +173,9 @@ impl OpenswanWhackInterface {
             OpenswanWhackInterface::openswan_encode_linkandlisten()).await.unwrap();
 
         // 3. do it twice, because sometimes we get:
-        //   bind() for dull004/dull004 [fe80::609c:62ff:fed8:abba%92]:500 in process_raw_ifaces(). Errno 99: Cannot assign requested address
-        // and we have no idea why.
+        //   bind() for dull004/dull004 [fe80::609c:62ff:fed8:abba%92]:500
+        //      in process_raw_ifaces(). Errno 99: Cannot assign requested address
+        // and it is not clear why, except that maybe the interface is not yet up?
         sleep(Duration::from_millis(100)).await;
         OpenswanWhackInterface::openswan_send_cmd(
             OpenswanWhackInterface::openswan_encode_linkandlisten()).await.unwrap();
