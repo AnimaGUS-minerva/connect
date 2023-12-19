@@ -431,7 +431,7 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                                 InfoKind::Veth => { ifn.ignored = true; }
                                 _ => { si.link_debug(format!("2 other kind {:?}", kind)); }
                             }
-                        }
+                        },
                         Info::Data(_data) => { /* ignore bridge data */ }
                         Info::SlaveData(_data) => { /* ignore bridge data */ }
                         Info::SlaveKind(_data) => {
