@@ -55,6 +55,7 @@ static VERSION: &str = "0.9.0";
 // static mut ARGV: *mut *mut i8 = 0 as *mut *mut i8;
 
 static VARCONNECT: &str = "/run/acp";
+static ETCCONNECT: &str = "/etc/acp";
 
 // rewrite with new Trait that takes Acp or Dull.
 async fn exit_child(stream: &mut control::ControlStream) {
@@ -83,6 +84,10 @@ struct ConnectOptions {
     // permit created DULL interfaces to accept Router Advertisements
     #[structopt(default_value = "false", long, parse(try_from_str))]
     allow_ra: bool,
+
+    // number DULL interfaces using ULA in order to get around limits on IPv6-LL IPsec SAs
+    #[structopt(long)]
+    link_local_ula: Option<String>,
 
     // how long to remain running, in seconds
     #[structopt(default_value = "86400", long, parse(try_from_str))]
@@ -254,8 +259,15 @@ fn main () -> Result<(), String> {
     match mkdir(VARCONNECT, stat::Mode::S_IRWXU) {
         Ok(_) => { },
         Err(Error::Sys(x)) if x == nix::errno::Errno::EEXIST => { },
-        Err(x) => { println!("can not create control directory {}: {:?}",
+        Err(x) => { println!("can not create run/acp control directory {}: {:?}",
                              VARCONNECT, x);
+        }
+    }
+    match mkdir(ETCCONNECT, stat::Mode::S_IRWXU) {
+        Ok(_) => { },
+        Err(Error::Sys(x)) if x == nix::errno::Errno::EEXIST => { },
+        Err(x) => { println!("can not create etc/acp directory {}: {:?}",
+                             ETCCONNECT, x);
         }
     }
 
