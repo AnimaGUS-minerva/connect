@@ -1,0 +1,68 @@
+connect(8) -- ACP management process
+====================================
+
+## SYNOPSIS
+
+`connect` [--debug_graspdaemon={true,false}] [--debug_parentlink={true,false}]
+          [--allow_ra={true,false}] [--link_local_ula={true,false}]
+          [--salive=86400] [--disable_ikev2={true,false}]
+          [--auto-up={true,false}] [--ignored_interfaces=regex]
+
+## DESCRIPTION
+
+Connect is an RFC8994 Autonomic Control Plane (ACP) management process.
+It uses Linux network namespaces to build an overlay network of point to point IPsec tunnels, with RPL routing on top.
+The result is a virtual out-of-band management system that is resilient to most forms of mis-configuration and physical failures.
+
+## OPTIONS
+
+* `--debug_graspdaemon`:
+TBD
+
+* `--debug_parentlink`:
+TBD
+
+* `--allow_ra`:
+TBD
+
+* `--link_local_ula`:
+Specifies an IPv6 prefix to use for numbering the insecure twin interfaces for communication between nodes.
+
+* `--salive`:
+TBD
+
+* `--disable_ikev2`:
+Do not do any IKEv2 communications.
+
+* `--auto-up`:
+Determine whether IPsec/IKEv2 connections should be activated (true, the default) or just declared.
+
+* `--ignored_interfaces`:
+System interfaces matching the regex provided by this argument will be ignored when processing devices.
+This argument may be repeated multiple times.
+
+## ACP PRINCIPLES
+
+The connect ACP daemon makes use of three network namespaces, but does not make full use of container-like isolation.
+The first namespace is the default, or "system" namespace.
+The second namespace is the Discovery/Abutment layer, which is where the IPsec channels are negotiated.
+The third namespace is the Deck layer, which is where the overlay network appears as virtual interfaces.
+
+The ACP is built with four major components:
+
+1. a virtual interface for each physical interface.  This are typically macvlan interface, but for interfaces that are part of a bridge, a veth pair is used instead.
+These interfaces appear into the abutment layer.
+
+2. a GRASP (DULL) discovery process that runs on the set of abutment interfaces.
+This allows each ACP node to discover other ACP systems.
+
+3. an IKEv2 daemon that runs inside the Abutment network namespace and negotiates IPsec connects to each discovered peer ACP system.
+This results in new virtual interfaces that appear in the Deck namespace, representing the connections in the overlay network.
+
+4. an RPL (RFC6550) routing daemon runs in the Deck layer to connect the different systems.
+
+## REFERENCES
+
+RFC8994
+
+

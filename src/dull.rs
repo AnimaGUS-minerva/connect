@@ -90,7 +90,8 @@ pub struct DullInit {
 pub struct Dull {
     pub debug:         DebugOptions,
     pub child_stream:  control::ControlStream,
-    pub dullpid:       Pid
+    pub dullpid:       Pid,
+    pub dullula:       Ipv6Addr,        /* /48 prefix generated for numbering interfaces */
 }
 
 impl Dull {
@@ -100,7 +101,9 @@ impl Dull {
 
         Dull { child_stream: child_stream,
                debug:        DebugOptions::empty(),
-               dullpid:      init.dullpid }
+               dullpid:      init.dullpid,
+               dullula:      "::".parse::<Ipv6Addr>().unwrap()
+        }
     }
 }
 

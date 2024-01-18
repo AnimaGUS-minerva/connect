@@ -19,8 +19,10 @@ extern crate sysctl;
 
 use std::sync::Arc;
 use std::path::Path;
+use std::fs;
 use std::fs::File;
 use std::io::prelude::*;
+use std::net::Ipv6Addr;
 //use rtnetlink::{new_connection};
 use std::io::ErrorKind;
 use tokio::time::{sleep, Duration};
@@ -140,6 +142,16 @@ async fn set_auto_ikev2(dull: &mut dull::Dull, disable_ikev2: bool) {
     set_opt(dull, opt).await;
 }
 
+fn read_dullula() -> Option<Ipv6Addr> {
+
+    let ulafilename = Path::new(ETCCONNECT).join("ula.txt");
+    let v6maybe = fs::read_to_string(ulafilename).ok()?.parse();
+    return match v6maybe {
+        Ok(x) => Some(x),
+        Err(_x) => None
+    }
+}
+
 async fn parents(rt: Arc<tokio::runtime::Runtime>,
                  dullinit: dull::DullInit,
                  acpinit:  acp::AcpInit,
@@ -150,6 +162,12 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
 
     dull.debug.debug_graspdaemon           = args.debug_graspdaemon;
     dull.debug.allow_router_advertisement  = args.allow_ra;
+    if let Some(x) = read_dullula() {
+        dull.dullula = x;
+    }
+    if let Some(x) = args.link_local_ula {
+        dull.dullula = x.parse::<Ipv6Addr>().unwrap();
+    }
     let mut alivecycles = args.salive * 1000 * 2;
 
     // tell the DULL namespace the debug values
