@@ -163,10 +163,10 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
     dull.debug.debug_graspdaemon           = args.debug_graspdaemon;
     dull.debug.allow_router_advertisement  = args.allow_ra;
     if let Some(x) = read_dullula() {
-        dull.dullula = x;
+        dull.dullula = Some(x);
     }
     if let Some(x) = args.link_local_ula {
-        dull.dullula = x.parse::<Ipv6Addr>().unwrap();
+        dull.dullula = Some(x.parse::<Ipv6Addr>().unwrap());
     }
     let mut alivecycles = args.salive * 1000 * 2;
 
