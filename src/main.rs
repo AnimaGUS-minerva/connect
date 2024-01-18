@@ -170,13 +170,13 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
     }
     let mut alivecycles = args.salive * 1000 * 2;
 
-    // tell the DULL namespace the debug values
+    // tell the Abutment namespace the debug values
     set_debug(&mut dull).await;
 
-    // tell the DULL whether to bring up IPsec automatically
+    // tell the Abutment whether to bring up IPsec automatically
     set_auto_up_adj(&mut dull, args.auto_up).await;
 
-    // tell the DULL whether to start IKEv2 daemon
+    // tell the Abutment whether to start IKEv2 daemon
     set_auto_ikev2(&mut dull, args.disable_ikev2).await;
 
     // wait for hello from ACP and then DULL namespace
@@ -196,7 +196,7 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
         }
     }
 
-    // tell the DULL system about the namespace from the ACP.
+    // tell the Abutment system about the namespace from the ACP.
     set_acp_ns(&mut dull, acp.acppid).await;
 
     println!("child ready, now starting netlink thread");
