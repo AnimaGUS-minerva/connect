@@ -145,6 +145,7 @@ pub struct DullData {
     pub auto_up_adj:   bool,
     pub disable_ikev2: bool,
     pub ikev2_started: bool,
+    pub abutifnumber:  Option<Ipv6Addr>,
     pub handle:        Option<Handle>
 }
 
@@ -169,6 +170,7 @@ impl DullData {
                           disable_ikev2:    true,
                           ikev2_started:    false,
                           acpns:            Pid::this(),
+                          abutifnumber:     None,
                           handle: None
         }
     }
@@ -597,6 +599,12 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>,
                     let cl = child.lock().await;
                     let mut dl = cl.data.lock().await;
                     dl.acpns = Pid::from_raw(acpns);
+                }
+                control::DullControl::UlaNumbering { prefix } => {
+                    println!("Abutment interfaces will be numbered with {}", prefix );
+                    let cl = child.lock().await;
+                    let mut dl = cl.data.lock().await;
+                    dl.abutifnumber = Some(prefix);
                 }
                 control::DullControl::ChildReady => {} // nothing to do
             }

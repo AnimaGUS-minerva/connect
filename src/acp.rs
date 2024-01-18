@@ -442,6 +442,7 @@ pub async fn process_control(child: Arc<Mutex<AcpChild>>, mut cs: ControlStream)
                 control::DullControl::DisableIKEv2  { .. } => {}
                 control::DullControl::ChildReady => {} // nothing to do
                 control::DullControl::DullNamespace { .. } => {} // nothing to do
+                control::DullControl::UlaNumbering  { .. } => {} // nothing to do
             }
         }
     }

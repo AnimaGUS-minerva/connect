@@ -142,6 +142,11 @@ async fn set_auto_ikev2(dull: &mut dull::Dull, disable_ikev2: bool) {
     set_opt(dull, opt).await;
 }
 
+async fn set_number_with_ula(abutment: &mut dull::Dull, prefix: Ipv6Addr) {
+    let opt = control::DullControl::UlaNumbering { prefix: prefix };
+    set_opt(abutment, opt).await;
+}
+
 fn read_dullula() -> Option<Ipv6Addr> {
 
     let ulafilename = Path::new(ETCCONNECT).join("ula.txt");
@@ -178,6 +183,11 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
 
     // tell the Abutment whether to start IKEv2 daemon
     set_auto_ikev2(&mut dull, args.disable_ikev2).await;
+
+    // tell the Abutment if it should number interfaces with ULAs.
+    if let Some(x) = dull.dullula {
+        set_number_with_ula(&mut dull, x).await;
+    }
 
     // wait for hello from ACP and then DULL namespace
     println!("waiting for ACP  startup");

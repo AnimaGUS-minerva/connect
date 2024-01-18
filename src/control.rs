@@ -24,6 +24,7 @@ use serde_cbor::{to_vec,from_slice};
 use serde_cbor::Deserializer;
 use serde::de;
 use std::io::{Error, ErrorKind};
+use std::net::Ipv6Addr;
 //use tokio_serde::formats::*;
 //use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use tokio::net::UnixStream;
@@ -67,6 +68,7 @@ pub enum DullControl {
     AutoAdjacency { adj_up: bool },
     DisableIKEv2  { disable_ikev2: bool },
     DullNamespace { namespace_id: i32 },
+    UlaNumbering  { prefix: Ipv6Addr },
     ChildReady
 }
 
