@@ -25,6 +25,9 @@ extern crate tokio;
 use gag::Redirect;
 
 use std::sync::Arc;
+use futures::channel::mpsc;
+use netlink_packet_route::NetlinkMessage;
+use netlink_packet_route::RtnlMessage;
 use crate::control;
 use crate::dullgrasp;
 use crate::dullgrasp::GraspDaemon;
@@ -411,6 +414,72 @@ impl DullChild {
     }
 }
 
+async fn abutment_process_netlink(child: Arc<Mutex<DullChild>>,
+                                  mut messages: mpsc::UnboundedReceiver<(NetlinkMessage<RtnlMessage>, rtnetlink::sys::SocketAddr)>,
+                                  handle: Handle) -> () {
+
+    let (mut debug,ikev2_started) = {
+        let  mychild = child.lock().await;
+
+        let mut data = mychild.data.lock().await;
+        data.handle  = Some(handle);
+        (data.debug.clone(), data.ikev2_started)
+    };
+
+    while let Some((message, _)) = messages.next().await {
+        let payload = message.payload;
+        match payload {
+            InnerMessage(DelRoute(_stuff)) => {
+                /* happens when acp_001 is moved to another namespace */
+                /* need to sort out when it is relevant */
+            }
+            InnerMessage(DelAddress(_stuff)) => {
+                /* happens when acp_001 is moved to another namespace */
+                /* need to sort out when it is relevant by looking at name and LinkHeader */
+            }
+            InnerMessage(DelLink(_stuff)) => {
+                /* happens when acp_001 is moved to another namespace */
+                /* need to sort out when it is relevant by looking at name and LinkHeader */
+            }
+            InnerMessage(NewLink(stuff)) => {
+                gather_link_info(&child, stuff).await.unwrap();
+            }
+            InnerMessage(NewAddress(stuff)) => {
+                let sifn = gather_addr_info(&child, stuff).await.unwrap();
+
+                if let Some(lifn) = sifn {
+                    let (bgd, recv, send) = GraspDaemon::initdaemon(lifn.clone(), child.clone()).await.unwrap();
+                    let gd = Arc::new(Mutex::new(bgd));
+                    {
+                        let mut ifn = lifn.lock().await;
+                        ifn.grasp_daemon = Some(gd.clone());
+                    }
+
+                    //Command::new("/root/traceosw")
+                    //.status()
+                    //                            .await
+                    //.expect("traceosw command failed to start");
+
+                    GraspDaemon::start_loop(gd, recv, send, child.clone()).await;
+
+                    // delay to let interfaces become stable.
+                    sleep(Duration::from_millis(200)).await;
+
+                    if ikev2_started {
+                        // poke Openswan to rescan the list of interfaces
+                        openswan::OpenswanWhackInterface::openswan_setup().await.unwrap();
+                    }
+                }
+            }
+            InnerMessage(NewRoute(_thing)) => {
+                /* just ignore these! */
+            }
+            //_ => { println!("generic message type: {} skipped", payload.message_type()); }
+            _ => { debug.debug_info(format!("listen_network msg type: {:?}", payload)); }
+        }
+    };
+    ()
+}
 
 async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task::JoinHandle<Result<(),Error>>, String> {
 
@@ -421,9 +490,9 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
     };
 
     /* NETLINK listen_network activity daemon: process it all in the background */
-    let listenhandle = rt2.spawn(async move {               // moves _child_, and _rt_ into spawn.
+    let listenhandle = rt2.spawn(async move {      // moves _child_, and _rt_ into spawn.
         // Open the netlink socket
-        let (mut connection, handle, mut messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
+        let (mut connection, handle, messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
 
         // These flags specify what kinds of broadcast messages we want to listen for.
         let mgroup_flags = RTMGRP_IPV6_ROUTE | RTMGRP_IPV6_IFADDR | RTMGRP_LINK;
@@ -437,66 +506,7 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
 
         child_lo_up(&handle).await;
 
-        let (mut debug,ikev2_started) = {
-            let  mychild = child.lock().await;
-
-            let mut data = mychild.data.lock().await;
-            data.handle  = Some(handle);
-            (data.debug.clone(), data.ikev2_started)
-        };
-
-        while let Some((message, _)) = messages.next().await {
-            let payload = message.payload;
-            match payload {
-                InnerMessage(DelRoute(_stuff)) => {
-                    /* happens when acp_001 is moved to another namespace */
-                    /* need to sort out when it is relevant */
-                }
-                InnerMessage(DelAddress(_stuff)) => {
-                    /* happens when acp_001 is moved to another namespace */
-                    /* need to sort out when it is relevant by looking at name and LinkHeader */
-                }
-                InnerMessage(DelLink(_stuff)) => {
-                    /* happens when acp_001 is moved to another namespace */
-                    /* need to sort out when it is relevant by looking at name and LinkHeader */
-                }
-                InnerMessage(NewLink(stuff)) => {
-                    gather_link_info(&child, stuff).await.unwrap();
-                }
-                InnerMessage(NewAddress(stuff)) => {
-                    let sifn = gather_addr_info(&child, stuff).await.unwrap();
-
-                    if let Some(lifn) = sifn {
-                        let (bgd, recv, send) = GraspDaemon::initdaemon(lifn.clone(), child.clone()).await.unwrap();
-                        let gd = Arc::new(Mutex::new(bgd));
-                        {
-                            let mut ifn = lifn.lock().await;
-                            ifn.grasp_daemon = Some(gd.clone());
-                        }
-
-                        //Command::new("/root/traceosw")
-                        //.status()
-                        //                            .await
-                        //.expect("traceosw command failed to start");
-
-                        GraspDaemon::start_loop(gd, recv, send, child.clone()).await;
-
-                        // delay to let interfaces become stable.
-                        sleep(Duration::from_millis(200)).await;
-
-                        if ikev2_started {
-                            // poke Openswan to rescan the list of interfaces
-                            openswan::OpenswanWhackInterface::openswan_setup().await.unwrap();
-                        }
-                    }
-                }
-                InnerMessage(NewRoute(_thing)) => {
-                    /* just ignore these! */
-                }
-                //_ => { println!("generic message type: {} skipped", payload.message_type()); }
-                _ => { debug.debug_info(format!("listen_network msg type: {:?}", payload)); }
-            }
-        };
+        abutment_process_netlink(child, messages, handle).await;
         Ok(())
     });
     Ok(listenhandle)
