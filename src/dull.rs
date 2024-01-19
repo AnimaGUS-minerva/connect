@@ -418,15 +418,21 @@ async fn abutment_process_netlink(child: Arc<Mutex<DullChild>>,
                                   mut messages: mpsc::UnboundedReceiver<(NetlinkMessage<RtnlMessage>, rtnetlink::sys::SocketAddr)>,
                                   handle: Handle) -> () {
 
-    let (mut debug,ikev2_started) = {
+    /* put the handle where it can be re-used */
+    {
         let  mychild = child.lock().await;
-
         let mut data = mychild.data.lock().await;
         data.handle  = Some(handle);
-        (data.debug.clone(), data.ikev2_started)
-    };
+    }
 
     while let Some((message, _)) = messages.next().await {
+        let (mut debug,ikev2_started) = {
+            let  mychild = child.lock().await;
+
+            let data = mychild.data.lock().await;
+            (data.debug.clone(), data.ikev2_started)
+        };
+
         let payload = message.payload;
         match payload {
             InnerMessage(DelRoute(_stuff)) => {
