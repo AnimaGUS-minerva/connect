@@ -414,25 +414,9 @@ impl DullChild {
     }
 }
 
-async fn abutment_process_netlink(child: Arc<Mutex<DullChild>>,
-                                  mut messages: mpsc::UnboundedReceiver<(NetlinkMessage<RtnlMessage>, rtnetlink::sys::SocketAddr)>,
-                                  handle: Handle) -> () {
-
-    /* put the handle where it can be re-used */
-    {
-        let  mychild = child.lock().await;
-        let mut data = mychild.data.lock().await;
-        data.handle  = Some(handle);
-    }
-
-    while let Some((message, _)) = messages.next().await {
-        let (mut debug,ikev2_started) = {
-            let  mychild = child.lock().await;
-
-            let data = mychild.data.lock().await;
-            (data.debug.clone(), data.ikev2_started)
-        };
-
+async fn abutment_process_one_netlink(child: Arc<Mutex<DullChild>>,
+                                      mut debug: DebugOptions, ikev2_started: bool,
+                                      message: NetlinkMessage<RtnlMessage>) -> () {
         let payload = message.payload;
         match payload {
             InnerMessage(DelRoute(_stuff)) => {
@@ -483,6 +467,29 @@ async fn abutment_process_netlink(child: Arc<Mutex<DullChild>>,
             //_ => { println!("generic message type: {} skipped", payload.message_type()); }
             _ => { debug.debug_info(format!("listen_network msg type: {:?}", payload)); }
         }
+}
+
+
+async fn abutment_process_netlink(child: Arc<Mutex<DullChild>>,
+                                  mut messages: mpsc::UnboundedReceiver<(NetlinkMessage<RtnlMessage>, rtnetlink::sys::SocketAddr)>,
+                                  handle: Handle) -> () {
+
+    /* put the handle where it can be re-used */
+    {
+        let  mychild = child.lock().await;
+        let mut data = mychild.data.lock().await;
+        data.handle  = Some(handle);
+    }
+
+    while let Some((message, _)) = messages.next().await {
+        let (debug,ikev2_started) = {
+            let  mychild = child.lock().await;
+
+            let data = mychild.data.lock().await;
+            (data.debug.clone(), data.ikev2_started)
+        };
+
+        abutment_process_one_netlink(child.clone(), debug, ikev2_started, message).await;
     };
     ()
 }
