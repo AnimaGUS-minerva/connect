@@ -83,11 +83,11 @@ struct ConnectOptions {
     #[structopt(default_value = "false", long, parse(try_from_str))]
     debug_parentlink: bool,
 
-    // permit created DULL interfaces to accept Router Advertisements
+    // permit created Abutment interfaces to accept Router Advertisements
     #[structopt(default_value = "false", long, parse(try_from_str))]
     allow_ra: bool,
 
-    // number DULL interfaces using ULA in order to get around limits on IPv6-LL IPsec SAs
+    // number Abutment interfaces using ULA in order to get around limits on IPv6-LL IPsec SAs
     #[structopt(long)]
     link_local_ula: Option<String>,
 
@@ -147,7 +147,7 @@ async fn set_number_with_ula(abutment: &mut dull::Dull, prefix: Ipv6Addr) {
     set_opt(abutment, opt).await;
 }
 
-fn read_dullula() -> Option<Ipv6Addr> {
+fn read_abutment_ula() -> Option<Ipv6Addr> {
 
     let ulafilename = Path::new(ETCCONNECT).join("ula.txt");
     let v6maybe = fs::read_to_string(ulafilename).ok()?.parse();
@@ -167,11 +167,11 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
 
     dull.debug.debug_graspdaemon           = args.debug_graspdaemon;
     dull.debug.allow_router_advertisement  = args.allow_ra;
-    if let Some(x) = read_dullula() {
-        dull.dullula = Some(x);
+    if let Some(x) = read_abutment_ula() {
+        dull.abutment_ula = Some(x);
     }
     if let Some(x) = args.link_local_ula {
-        dull.dullula = Some(x.parse::<Ipv6Addr>().unwrap());
+        dull.abutment_ula = Some(x.parse::<Ipv6Addr>().unwrap());
     }
     let mut alivecycles = args.salive * 1000 * 2;
 
@@ -185,11 +185,11 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
     set_auto_ikev2(&mut dull, args.disable_ikev2).await;
 
     // tell the Abutment if it should number interfaces with ULAs.
-    if let Some(x) = dull.dullula {
+    if let Some(x) = dull.abutment_ula {
         set_number_with_ula(&mut dull, x).await;
     }
 
-    // wait for hello from ACP and then DULL namespace
+    // wait for hello from ACP and then Abutment namespace
     println!("waiting for ACP  startup");
     while let Ok(msg) = acp.child_stream.read_control().await {
         match msg {

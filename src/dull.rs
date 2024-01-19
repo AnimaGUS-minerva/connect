@@ -15,6 +15,8 @@
  *
  */
 
+/* THIS FILE SHOULD BE NAMED ABUTMENT.RS */
+
 extern crate nix;
 extern crate tokio;
 
@@ -91,7 +93,7 @@ pub struct Dull {
     pub debug:         DebugOptions,
     pub child_stream:  control::ControlStream,
     pub dullpid:       Pid,
-    pub dullula:       Option<Ipv6Addr>,        /* /48 prefix generated for numbering interfaces */
+    pub abutment_ula:  Option<Ipv6Addr>,        /* /48 prefix generated for numbering interfaces */
 }
 
 impl Dull {
@@ -102,7 +104,7 @@ impl Dull {
         Dull { child_stream: child_stream,
                debug:        DebugOptions::empty(),
                dullpid:      init.dullpid,
-               dullula:      None,
+               abutment_ula: None,
         }
     }
 }
