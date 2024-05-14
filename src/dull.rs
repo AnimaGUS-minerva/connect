@@ -416,7 +416,7 @@ impl DullChild {
 
 async fn abutment_process_one_netlink(child: Arc<Mutex<DullChild>>,
                                       mut debug: DebugOptions, ikev2_started: bool,
-                                      message: NetlinkMessage<RtnlMessage>) -> () {
+                                      message: NetlinkMessage<RtnlMessage>) {
         let payload = message.payload;
         match payload {
             InnerMessage(DelRoute(_stuff)) => {
@@ -784,3 +784,64 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use netlink_packet_route::AddressHeader;
+    use netlink_packet_route::AF_INET6;
+    use netlink_packet_core::{
+        NetlinkHeader, NetlinkMessage, NetlinkPayload,
+    };
+
+    macro_rules! aw {
+        ($e:expr) => {
+            tokio_test::block_on($e)
+        };
+    }
+
+    /* define a second interface with ifindex and a Link-Local address, for Join */
+    fn setup_am_2() -> AddressMessage {
+        use netlink_packet_route::address::nlas::Nla;
+
+        AddressMessage {
+            header: AddressHeader { family: AF_INET6 as u8,
+                                    prefix_len: 64,
+                                    flags: 0,
+                                    scope: 0,
+                                    index: 12
+            },
+            nlas: vec![
+                Nla::Address(vec![0xfe, 0x80, 0,0, 0,0,0,0,
+                                  0x00, 0x00, 0,0, 0,0,0,2])
+            ],
+        }
+    }
+
+    async fn process_one_netlink_message(child: Arc<Mutex<DullChild>>) -> bool {
+
+        let debug = DebugOptions::empty();
+        let netlinkheader = NetlinkHeader { length: 1,
+                                            message_type: 2,
+                                            flags: 3,
+                                            sequence_number: 4,
+                                            port_number: 1234 };
+        let msg: NetlinkMessage<RtnlMessage> = NetlinkMessage {
+            header:  netlinkheader,
+            payload: NetlinkPayload::InnerMessage(NewAddress(setup_am_2()))
+        };
+
+        abutment_process_one_netlink(child,
+                                     debug, false /* ikev2_started */,
+                                     msg).await;
+        return true;
+    }
+
+    #[test]
+    fn test_process_newif_message() {
+        let child = DullChild::empty();
+        assert_eq!(aw!(process_one_netlink_message(child.clone())), true);
+        //assert_eq!(aw!(foo1()), true);
+    }
+}
+

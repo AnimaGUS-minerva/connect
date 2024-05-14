@@ -16,6 +16,7 @@ moz_cbor   = { git = "https://github.com/AnimaGUS-minerva/cbor-rust.git", branch
 nix        = { version = "0.19" }
 rtnetlink     = { features = [ "tokio_socket" ], path = "../netlink/rtnetlink", version = "0.11.*" }
 netlink-packet-route = { path = "../netlink/netlink-packet-route", version = "0.13.*" }
+netlink-packet-core  = { version = "*" }
 netlink-proto = { version = "*", features = [ "tokio_socket" ] }
 netlink-packet-sock-diag = "*"
 async-trait   = "0.1.48"
