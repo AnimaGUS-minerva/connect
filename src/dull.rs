@@ -16,6 +16,9 @@
  */
 
 /* THIS FILE SHOULD BE NAMED ABUTMENT.RS */
+/* abutment is the "new" name for the namespace that can see the real
+ * network interfaces, but is not the actual interfaces
+ */
 
 extern crate nix;
 extern crate tokio;
@@ -79,10 +82,11 @@ use netlink_packet_route::{
  * This function forks and creates a child process that will enter a new network namespace
  * using unshare(2).
  *
- * Prior to doing this, it will create a new dull instance object.
+ * Prior to doing this, it will create a new dull (abutment) instance object.
  */
 
-/* This structure is present in the parent to represent the DULL, before tokio */
+/* This structure is present in the parent to represent the DULL,
+ * before tokio is initialized, and it becomes a struct Dull */
 pub struct DullInit {
     pub child_io:      UnixStream,
     pub dullpid:       Pid
@@ -800,7 +804,9 @@ mod tests {
         };
     }
 
-    /* define a second interface with ifindex and a Link-Local address, for Join */
+    /* define a second interface with ifindex and a Link-Local address,
+     * for Join messages
+     */
     fn setup_am_2() -> AddressMessage {
         use netlink_packet_route::address::nlas::Nla;
 
