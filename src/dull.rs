@@ -125,6 +125,7 @@ pub struct DullInterface {
     pub is_acp:        bool,             /* true if this is a created ACP interface */
     pub mtu:           u32,
     pub linklocal6:    Ipv6Addr,
+    pub ula6:          Option<Ipv6Addr>,
     pub oper_state:    State,
     pub grasp_daemon:  Option<Arc<Mutex<dullgrasp::GraspDaemon>>>,
     pub adjacencies:   HashMap<Ipv6Addr, Arc<Mutex<Adjacency>>>
@@ -138,6 +139,7 @@ impl DullInterface {
             mtu:     0,
             is_acp:     false,
             linklocal6: Ipv6Addr::UNSPECIFIED,
+            ula6:       None,
             oper_state: State::Down,
             grasp_daemon: None,
             adjacencies:  HashMap::new()
@@ -317,11 +319,18 @@ impl DullData {
                     //if !llv6.is_unicast_link_local() {
                     // continue;
                     //}
-                    if llv6.segments()[0] != 0xfe80 {
+                    let fseg = llv6.segments()[0];
+                    if fseg == 0xfe80 {
+                        // IPv6 LL prefix
+                        ifn.linklocal6 = llv6;
+                        mydebug.debug_info(format!("llv6: {}", ifn.linklocal6));
+                    } else if (fseg & 0xfd00) == 0xfd00 {
+                        // IPv6 ULA prefix
+                        mydebug.debug_info(format!("ula6: {}", llv6));
+                        ifn.ula6 = Some(llv6);
+                    } else {
                         continue;
                     }
-                    ifn.linklocal6 = llv6;
-                    mydebug.debug_info(format!("llv6: {}", ifn.linklocal6));
                 },
                 Nla::CacheInfo(_info) => { /* nothing */},
                 Nla::Flags(_info)     => { /* nothing */},
@@ -424,16 +433,16 @@ async fn abutment_process_one_netlink(child: Arc<Mutex<DullChild>>,
         let payload = message.payload;
         match payload {
             InnerMessage(DelRoute(_stuff)) => {
-                /* happens when acp_001 is moved to another namespace */
-                /* need to sort out when it is relevant */
+                /* also happens when acp_001 is moved to another namespace */
+                /* need to sort out when it is relevant->delete connection */
             }
             InnerMessage(DelAddress(_stuff)) => {
-                /* happens when acp_001 is moved to another namespace */
+                /* also happens when acp_001 is moved to another namespace */
                 /* need to sort out when it is relevant by looking at name and LinkHeader */
             }
             InnerMessage(DelLink(_stuff)) => {
-                /* happens when acp_001 is moved to another namespace */
-                /* need to sort out when it is relevant by looking at name and LinkHeader */
+                /* also happens when acp_001 is moved to another namespace */
+                /* when not acp_001, then it's a real interface going away */
             }
             InnerMessage(NewLink(stuff)) => {
                 gather_link_info(&child, stuff).await.unwrap();
@@ -442,19 +451,24 @@ async fn abutment_process_one_netlink(child: Arc<Mutex<DullChild>>,
                 let sifn = gather_addr_info(&child, stuff).await.unwrap();
 
                 if let Some(lifn) = sifn {
-                    let (bgd, recv, send) = GraspDaemon::initdaemon(lifn.clone(), child.clone()).await.unwrap();
-                    let gd = Arc::new(Mutex::new(bgd));
-                    {
+                    let daemon_needed = {
+                        let ifn = lifn.lock().await;
+                        ifn.grasp_daemon.is_none()
+                    };
+
+                    if daemon_needed {
+                        let (bgd, recv, send) = GraspDaemon::initdaemon(lifn.clone(), child.clone()).await.unwrap();
+                        let gd = Arc::new(Mutex::new(bgd));
                         let mut ifn = lifn.lock().await;
                         ifn.grasp_daemon = Some(gd.clone());
-                    }
 
                     //Command::new("/root/traceosw")
                     //.status()
                     //                            .await
                     //.expect("traceosw command failed to start");
 
-                    GraspDaemon::start_loop(gd, recv, send, child.clone()).await;
+                        GraspDaemon::start_loop(gd, recv, send, child.clone()).await;
+                    }
 
                     // delay to let interfaces become stable.
                     sleep(Duration::from_millis(200)).await;
@@ -519,6 +533,7 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
         // Said address is bound so new connections and thus new message broadcasts can be received.
         connection.socket_mut().socket_mut().bind(&addr).expect("failed to bind");
         //connection.socket_mut().as_raw_fd().set_close_on_exec(false)?;
+        /* background async to process netlink messages */
         rt.spawn(connection);
 
         child_lo_up(&handle).await;
