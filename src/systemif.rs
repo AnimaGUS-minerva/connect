@@ -21,6 +21,7 @@ extern crate sysctl;
 use std::sync::Arc;
 use std::collections::HashMap;
 use nix::unistd::Pid;
+use std::net::Ipv6Addr;
 use async_trait::async_trait;
 use futures::stream::{StreamExt, TryStreamExt};
 use futures::lock::Mutex;
@@ -53,22 +54,27 @@ use netlink_packet_route::{
 use crate::dull::IfIndex;
 
 #[async_trait]
-trait NetlinkManager: Send + Sync {
+pub trait NetlinkManager: Send + Sync {
     async fn create_ethernet_pair_for_bridge(self: &Self,
                                              dullpid:  Pid,
                                              bridgeif: IfIndex) -> Result<(), rtnetlink::Error>;
     async fn create_macvlan(self: &Self,
                             dullpid:  Pid,
                             physif: IfIndex) -> Result<(), rtnetlink::Error>;
+
+    async fn add_abutment_address(self: &Self,
+                                  abutmentif: IfIndex,
+                                  addr:       Ipv6Addr)
+                                  -> Result<(), rtnetlink::Error>;
 }
 
-struct NetlinkInterface {
+pub struct NetlinkInterface {
     pub handle:     Handle,
     pub messages:   futures::channel::mpsc::UnboundedReceiver<(NetlinkMessage<RtnlMessage>, SocketAddr)>,
 }
 
 impl NetlinkInterface {
-    pub fn new(rt: &Arc<tokio::runtime::Runtime>) -> NetlinkInterface {
+    pub fn new(rt: Arc<tokio::runtime::Runtime>) -> NetlinkInterface {
         // Open the netlink socket
         let (mut connection, handle, messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
 
@@ -231,6 +237,15 @@ impl NetlinkManager for NetlinkInterface {
         }
 
         return Ok(());
+    }
+
+    async fn add_abutment_address(self: &Self,
+                                  abutmentif: IfIndex,
+                                  addr:       Ipv6Addr)
+                                  -> Result<(), rtnetlink::Error>
+    {
+        println!("adding {} to interface {}", addr, abutmentif);
+        return Err(rtnetlink::Error::RequestFailed);
     }
 }
 
@@ -518,7 +533,7 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>,
 
         println!("opening netlink socket for system interface monitor (debug={})", si.link_debugging);
 
-        let mut nl = NetlinkInterface::new(&rt1);
+        let mut nl = NetlinkInterface::new(rt1);
 
         /* first scan and process existing interfaces */
         scan_interfaces(&mut si, &nl.handle).await;
@@ -571,6 +586,13 @@ mod tests {
             return Ok(());
         }
         async fn create_macvlan(self: &Self, _dullpid: Pid, _physif: IfIndex) -> Result<(), rtnetlink::Error> {
+            return Ok(())
+        }
+        async fn add_abutment_address(self: &Self,
+                                      abutmentif: IfIndex,
+                                      addr:       Ipv6Addr)
+                                      -> Result<(), rtnetlink::Error>
+        {
             return Ok(())
         }
     }

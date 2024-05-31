@@ -38,6 +38,7 @@ use crate::adjacency::Adjacency;
 use crate::control::DebugOptions;
 use crate::control::ControlStream;
 use crate::control::{open_log, unset_cloexec};
+use crate::systemif::{NetlinkManager,NetlinkInterface};
 
 use crate::openswan;
 use nix::unistd::*;
@@ -149,6 +150,7 @@ impl DullInterface {
 
 pub struct DullData {
     pub interfaces:    HashMap<u32, Arc<Mutex<DullInterface>>>,
+    pub netlink:       Box<dyn NetlinkManager>,
     pub acpns:         Pid,
     pub cmd_cnt:       u32,
     pub debug:         DebugOptions,
@@ -156,7 +158,7 @@ pub struct DullData {
     pub auto_up_adj:   bool,
     pub disable_ikev2: bool,
     pub ikev2_started: bool,
-    pub abutifnumber:  Option<Ipv6Addr>,
+    pub abutifprefix:  Option<Ipv6Addr>,
     pub handle:        Option<Handle>
 }
 
@@ -173,15 +175,16 @@ pub async fn child_lo_up(handle: &Handle) {
 }
 
 impl DullData {
-    pub fn empty() -> DullData {
+    pub fn empty(rt: Arc<tokio::runtime::Runtime>) -> DullData {
         return DullData { interfaces: HashMap::new(), cmd_cnt: 0,
+                          netlink:          Box::new(NetlinkInterface::new(rt.clone())),
                           debug: DebugOptions::empty(),
                           exit_now:         false,
                           auto_up_adj:      true,
                           disable_ikev2:    true,
                           ikev2_started:    false,
                           acpns:            Pid::this(),
-                          abutifnumber:     None,
+                          abutifprefix:     None,
                           handle: None
         }
     }
@@ -414,10 +417,11 @@ impl DullChild {
             .build()
             .unwrap();
 
-        Arc::new(Mutex::new(DullChild { runtime:        Arc::new(rt),
+        let rt0 = Arc::new(rt);
+        Arc::new(Mutex::new(DullChild { runtime:        rt0.clone(),
                                         netlink_handle: None,
                                         ifid_number:     1,
-                                        data:           Mutex::new(DullData::empty()) }))
+                                        data:           Mutex::new(DullData::empty(rt0.clone())) }))
     }
 
     pub fn allocate_ifid(self: &mut DullChild) -> u16 {
@@ -648,7 +652,7 @@ pub async fn process_control(child: Arc<Mutex<DullChild>>,
                     println!("Abutment interfaces will be numbered with {}", prefix );
                     let cl = child.lock().await;
                     let mut dl = cl.data.lock().await;
-                    dl.abutifnumber = Some(prefix);
+                    dl.abutifprefix = Some(prefix);
                 }
                 control::DullControl::ChildReady => {} // nothing to do
             }
@@ -779,17 +783,18 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
             create_netns().unwrap();
 
             // tokio 1.7
-            let rt = tokio::runtime::Builder::new_multi_thread()
+            let rt0 = tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(4)
                 .thread_name("dull")
                 .enable_all()
                 .build()
                 .unwrap();
 
-            let childinfo = DullChild { runtime:        Arc::new(rt),
+            let rt = Arc::new(rt0);
+            let childinfo = DullChild { runtime:        rt.clone(),
                                         ifid_number:    1,
                                         netlink_handle: None,
-                                        data:           Mutex::new(DullData::empty()),
+                                        data:           Mutex::new(DullData::empty(rt.clone())),
             };
 
             let art = childinfo.runtime.clone();

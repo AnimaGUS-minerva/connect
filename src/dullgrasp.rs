@@ -36,7 +36,7 @@ use netlink_packet_sock_diag::constants::IPPROTO_UDP;
 use cbor::CborType;
 use cbor::decoder::decode as cbor_decode;
 
-use crate::dull::{DullChild,DullInterface};
+use crate::dull::{DullChild,DullInterface,DullData};
 use crate::grasp;
 use crate::grasp::{GraspMessage, GraspMessageType};
 use crate::error::ConnectError;
@@ -50,6 +50,28 @@ pub struct GraspDaemon {
     pub grasp_dest:   std::net::SocketAddr
 }
 
+fn setup_ula_for_interface(ifn: &DullInterface, dd: &DullData) -> Result<(),Error> {
+    // make up a useful IID (lower-64-bits) to go with this prefix.
+    if ifn.ula6 == None {
+        // None, need to set the IID up
+        let ulapieces = dd.abutifprefix.unwrap().segments();
+        let llpieces  = ifn.linklocal6.segments();
+        let ifindex16:  u16 = (ifn.ifindex & 0xffff) as u16;
+        /* almost always zero, but add it in, just in case */
+        let ifindex16u: u16 = (ifn.ifindex >> 16) as u16;
+        let ula6 = Ipv6Addr::new(ulapieces[0], ulapieces[1],
+                                 ulapieces[2] + ifindex16u,
+                                 ifindex16, /* bits 48 to 63 */
+                                 llpieces[4],llpieces[5],
+                                 llpieces[6],llpieces[7]);
+        println!("ULA is using: {}", ula6);
+        dd.netlink.add_abutment_address(ifn.ifindex, ula6);
+    }
+
+    Ok(())
+}
+
+
 impl GraspDaemon {
     pub async fn initdaemon(lifn: Arc<Mutex<DullInterface>>,
                             child: Arc<Mutex<DullChild>>) -> Result<(GraspDaemon,
@@ -61,6 +83,16 @@ impl GraspDaemon {
         let ifindex = ifn.ifindex;
 
         use socket2::{Socket, Domain, Type};
+
+        // if a ULA has been provided, then we doing ULA numbering
+        // for the abutment interfaces.
+        {
+            let cl = child.lock().await;
+            let dd = cl.data.lock().await;
+            if let Some(_ula) = dd.abutifprefix {
+                let _ = setup_ula_for_interface(&ifn, &dd).unwrap();
+            }
+        }
 
         let rsin6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED,
                                       grasp::GRASP_PORT as u16, 0, ifindex);
@@ -382,17 +414,13 @@ mod tests {
     use super::*;
     use crate::dull;
 
-    macro_rules! aw {
-        ($e:expr) => {
-            tokio_test::block_on($e)
-        };
-    }
-
-    async fn construct_grasp_daemon(dc: Arc<Mutex<DullChild>>, addr: &str) -> Result<GraspDaemon, std::io::Error> {
-        let mut dd = dull::DullData::empty();
+    async fn construct_grasp_daemon(rt: Arc<tokio::runtime::Runtime>,
+                                    dc: Arc<Mutex<DullChild>>,
+                                    addr: &str) -> Result<GraspDaemon, std::io::Error> {
+        let mut dd = dull::DullData::empty(rt.clone());
 
         let val = addr.to_string().parse::<Ipv6Addr>().unwrap();
-        let ifindex = 0;
+        let ifindex = 0;  // needs to be zero. lo is ifindex 0, bind() to lo
         let lifn = dd.get_entry_by_ifindex(ifindex).await;
         {
             let mut ifn  = lifn.lock().await;
@@ -403,16 +431,29 @@ mod tests {
         return Ok(gd);
     }
 
-    async fn send_mflood_message(dc: Arc<Mutex<DullChild>>) -> Result<(), std::io::Error> {
-        let _gp = construct_grasp_daemon(dc, "fe80::11").await.unwrap();
+    async fn send_mflood_message(_dc: Arc<Mutex<DullChild>>) -> Result<(), std::io::Error> {
         Ok(())
     }
 
 
-    #[test]
-    fn test_send_mflood() {
+    #[tokio::test]
+    async fn test_send_mflood() {
+        let rt = Arc::new(tokio::runtime::Builder::new_multi_thread().build().unwrap());
         let dc = DullChild::empty();
-        aw!(send_mflood_message(dc.clone())).unwrap();
+        let _gp = construct_grasp_daemon(rt.clone(), dc, "fe80::11").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn send_mflood_message_ula() -> Result<(), std::io::Error> {
+        let dc = DullChild::empty();
+        {
+            let dc0 = dc.lock().await;
+            let mut dd  = dc0.data.lock().await;
+            dd.abutifprefix = Some("fd0a:0a0a:0a0a:abcd::".parse::<Ipv6Addr>().unwrap());
+        }
+        let rt = Arc::new(tokio::runtime::Builder::new_multi_thread().build().unwrap());
+        let _gp = construct_grasp_daemon(rt, dc, "fe80::11").await.unwrap();
+        Ok(())
     }
 }
 
