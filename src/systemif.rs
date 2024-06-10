@@ -245,7 +245,11 @@ impl NetlinkManager for NetlinkInterface {
                                   -> Result<(), rtnetlink::Error>
     {
         println!("adding {} to interface {}", addr, abutmentif);
-        return Err(rtnetlink::Error::RequestFailed);
+        self.handle
+            .address()
+            .add(abutmentif, std::net::IpAddr::V6(addr), 128)
+            .execute()
+            .await
     }
 }
 
