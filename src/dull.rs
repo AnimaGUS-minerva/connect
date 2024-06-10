@@ -809,12 +809,6 @@ mod tests {
         NetlinkHeader, NetlinkMessage, NetlinkPayload,
     };
 
-    macro_rules! aw {
-        ($e:expr) => {
-            tokio_test::block_on($e)
-        };
-    }
-
     /* define a second interface with ifindex and a Link-Local address,
      * for Join messages
      */
