@@ -177,7 +177,7 @@ pub async fn child_lo_up(handle: &Handle) {
 impl DullData {
     pub fn empty(rt: Arc<tokio::runtime::Runtime>) -> DullData {
         return DullData { interfaces: HashMap::new(), cmd_cnt: 0,
-                          netlink:          Box::new(NetlinkInterface::new(rt.clone())),
+                          netlink:    Box::new(NetlinkInterface::new(rt.clone())),
                           debug: DebugOptions::empty(),
                           exit_now:         false,
                           auto_up_adj:      true,
@@ -408,20 +408,11 @@ pub struct DullChild {
 impl DullChild {
     // mostly used by unit test cases
 
-    pub fn empty() -> Arc<Mutex<DullChild>> {
-        // tokio 1.7 with rt-multi-thread
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(4)
-            .thread_name("dull")
-            .enable_all()
-            .build()
-            .unwrap();
-
-        let rt0 = Arc::new(rt);
-        Arc::new(Mutex::new(DullChild { runtime:        rt0.clone(),
+    pub fn empty(rt: Arc<tokio::runtime::Runtime>) -> Arc<Mutex<DullChild>> {
+        Arc::new(Mutex::new(DullChild { runtime:        rt.clone(),
                                         netlink_handle: None,
                                         ifid_number:     1,
-                                        data:           Mutex::new(DullData::empty(rt0.clone())) }))
+                                        data:           Mutex::new(DullData::empty(rt.clone())) }))
     }
 
     pub fn allocate_ifid(self: &mut DullChild) -> u16 {
@@ -844,30 +835,33 @@ mod tests {
         }
     }
 
-    async fn process_one_netlink_message(child: Arc<Mutex<DullChild>>) -> bool {
-
-        let debug = DebugOptions::empty();
-        let netlinkheader = NetlinkHeader { length: 1,
-                                            message_type: 2,
-                                            flags: 3,
-                                            sequence_number: 4,
-                                            port_number: 1234 };
-        let msg: NetlinkMessage<RtnlMessage> = NetlinkMessage {
-            header:  netlinkheader,
-            payload: NetlinkPayload::InnerMessage(NewAddress(setup_am_2()))
-        };
-
-        abutment_process_one_netlink(child,
-                                     debug, false /* ikev2_started */,
-                                     msg).await;
-        return true;
-    }
-
     #[test]
-    fn test_process_newif_message() {
-        let child = DullChild::empty();
-        assert_eq!(aw!(process_one_netlink_message(child.clone())), true);
-        //assert_eq!(aw!(foo1()), true);
+    fn test_process_one_netlink_message() {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let rt0 = Arc::new(rt);
+
+        let rt1 = rt0.clone();
+        rt1.block_on(async {
+            let child = DullChild::empty(rt0.clone());
+            let debug = DebugOptions::empty();
+            let netlinkheader = NetlinkHeader { length: 1,
+                                                message_type: 2,
+                                                flags: 3,
+                                                sequence_number: 4,
+                                                port_number: 1234 };
+            let msg: NetlinkMessage<RtnlMessage> = NetlinkMessage {
+                header:  netlinkheader,
+                payload: NetlinkPayload::InnerMessage(NewAddress(setup_am_2()))
+            };
+
+            abutment_process_one_netlink(child,
+                                         debug, false /* ikev2_started */,
+                                         msg).await;
+        })
     }
 }
 

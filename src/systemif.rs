@@ -589,8 +589,8 @@ mod tests {
             return Ok(())
         }
         async fn add_abutment_address(self: &Self,
-                                      abutmentif: IfIndex,
-                                      addr:       Ipv6Addr)
+                                      _abutmentif: IfIndex,
+                                      _addr:       Ipv6Addr)
                                       -> Result<(), rtnetlink::Error>
         {
             return Ok(())

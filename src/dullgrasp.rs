@@ -50,7 +50,7 @@ pub struct GraspDaemon {
     pub grasp_dest:   std::net::SocketAddr
 }
 
-fn setup_ula_for_interface(ifn: &DullInterface, dd: &DullData) -> Result<(),Error> {
+async fn setup_ula_for_interface(ifn: &DullInterface, dd: &DullData) -> Result<(),Error> {
     // make up a useful IID (lower-64-bits) to go with this prefix.
     if ifn.ula6 == None {
         // None, need to set the IID up
@@ -65,7 +65,7 @@ fn setup_ula_for_interface(ifn: &DullInterface, dd: &DullData) -> Result<(),Erro
                                  llpieces[4],llpieces[5],
                                  llpieces[6],llpieces[7]);
         println!("ULA is using: {}", ula6);
-        dd.netlink.add_abutment_address(ifn.ifindex, ula6);
+        dd.netlink.add_abutment_address(ifn.ifindex, ula6).await.unwrap();
     }
 
     Ok(())
@@ -90,7 +90,7 @@ impl GraspDaemon {
             let cl = child.lock().await;
             let dd = cl.data.lock().await;
             if let Some(_ula) = dd.abutifprefix {
-                let _ = setup_ula_for_interface(&ifn, &dd).unwrap();
+                let _ = setup_ula_for_interface(&ifn, &dd).await.unwrap();
             }
         }
 
@@ -436,23 +436,28 @@ mod tests {
     }
 
 
-    #[tokio::test]
-    async fn test_send_mflood() {
-        let rt = Arc::new(tokio::runtime::Builder::new_multi_thread().build().unwrap());
-        let dc = DullChild::empty();
-        let _gp = construct_grasp_daemon(rt.clone(), dc, "fe80::11").await.unwrap();
+    #[test]
+    fn test_send_mflood() {
+        let rt = Arc::new(tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap());
+        rt.block_on(async {
+            let dc = DullChild::empty(rt.clone());
+            let _gp = construct_grasp_daemon(rt.clone(), dc, "fe80::11").await.unwrap();
+        })
     }
 
-    #[tokio::test]
-    async fn send_mflood_message_ula() -> Result<(), std::io::Error> {
-        let dc = DullChild::empty();
-        {
-            let dc0 = dc.lock().await;
-            let mut dd  = dc0.data.lock().await;
-            dd.abutifprefix = Some("fd0a:0a0a:0a0a:abcd::".parse::<Ipv6Addr>().unwrap());
-        }
-        let rt = Arc::new(tokio::runtime::Builder::new_multi_thread().build().unwrap());
-        let _gp = construct_grasp_daemon(rt, dc, "fe80::11").await.unwrap();
+    #[test]
+    fn send_mflood_message_ula() -> Result<(), std::io::Error> {
+        let rt = Arc::new(tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap());
+        let rt0 = rt.clone();
+        rt0.block_on(async {
+            let dc = DullChild::empty(rt.clone());
+            {
+                let dc0 = dc.lock().await;
+                let mut dd  = dc0.data.lock().await;
+                dd.abutifprefix = Some("fd0a:0a0a:0a0a:abcd::".parse::<Ipv6Addr>().unwrap());
+            }
+            let _gp = construct_grasp_daemon(rt, dc, "fe80::11").await.unwrap();
+        });
         Ok(())
     }
 }
