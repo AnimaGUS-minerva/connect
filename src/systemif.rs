@@ -573,13 +573,13 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>,
 
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use netlink_packet_route::LinkHeader;
     use netlink_packet_route::link::nlas::Nla;
     //use netlink_packet_route::constants::*;
 
-    struct FakeNetlinkInterface {
+    pub struct FakeNetlinkInterface {
     }
     #[async_trait]
     impl NetlinkManager for FakeNetlinkInterface {
