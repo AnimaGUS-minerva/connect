@@ -41,6 +41,7 @@ use crate::grasp;
 use crate::grasp::{GraspMessage, GraspMessageType};
 use crate::error::ConnectError;
 use crate::adjacency::Adjacency;
+use crate::systemif::NetlinkManager;
 
 #[derive(Debug)]
 pub struct GraspDaemon {
@@ -50,7 +51,11 @@ pub struct GraspDaemon {
     pub grasp_dest:   std::net::SocketAddr
 }
 
-async fn setup_ula_for_interface(ifn: &DullInterface, dd: &DullData) -> Result<(),Error> {
+async fn setup_ula_for_interface(ifn: &DullInterface,
+                                 dd: &DullData,
+                                 nm: Arc<dyn NetlinkManager + Send + Sync>) ->
+    Result<(),Error>
+{
     // make up a useful IID (lower-64-bits) to go with this prefix.
     if ifn.ula6 == None {
         // None, need to set the IID up
@@ -65,7 +70,7 @@ async fn setup_ula_for_interface(ifn: &DullInterface, dd: &DullData) -> Result<(
                                  llpieces[4],llpieces[5],
                                  llpieces[6],llpieces[7]);
         println!("ULA is using: {}", ula6);
-        dd.netlink.add_abutment_address(ifn.ifindex, ula6).await.unwrap();
+        nm.add_abutment_address(ifn.ifindex, ula6).await.unwrap();
     }
 
     Ok(())
@@ -74,10 +79,12 @@ async fn setup_ula_for_interface(ifn: &DullInterface, dd: &DullData) -> Result<(
 
 impl GraspDaemon {
     pub async fn initdaemon(lifn: Arc<Mutex<DullInterface>>,
-                            child: Arc<Mutex<DullChild>>) -> Result<(GraspDaemon,
-                                                                        tokio::net::UdpSocket,
-                                                                        tokio::net::UdpSocket),Error> {
-
+                            child: Arc<Mutex<DullChild>>,
+                            nm: Arc<dyn NetlinkManager + Send + Sync>) ->
+        Result<(GraspDaemon,
+                tokio::net::UdpSocket,
+                tokio::net::UdpSocket),Error>
+{
         let ifn  = lifn.lock().await;
         let llv6 = ifn.linklocal6;
         let ifindex = ifn.ifindex;
@@ -90,7 +97,7 @@ impl GraspDaemon {
             let cl = child.lock().await;
             let dd = cl.data.lock().await;
             if let Some(_ula) = dd.abutifprefix {
-                let _ = setup_ula_for_interface(&ifn, &dd).await.unwrap();
+                let _ = setup_ula_for_interface(&ifn, &dd, nm.clone()).await.unwrap();
             }
         }
 
@@ -148,6 +155,7 @@ impl GraspDaemon {
     }
 
     pub async fn read_loop(gd: Arc<Mutex<GraspDaemon>>,
+                           _nm: Arc<dyn NetlinkManager + Send + Sync>,
                            dd: Arc<Mutex<DullChild>>,
                            recv: tokio::net::UdpSocket /*tokio::net::udp::RecvHalf*/) {
 
@@ -386,6 +394,7 @@ impl GraspDaemon {
     }
 
     pub async fn start_loop(gd: Arc<Mutex<GraspDaemon>>,
+                            nm: Arc<dyn NetlinkManager + Send + Sync>,
                             recv: /*tokio::net::udp::RecvHalf*/ tokio::net::UdpSocket,
                             send: /*tokio::net::udp::SendHalf*/ tokio::net::UdpSocket,
                             dd: Arc<Mutex<DullChild>>) {
@@ -396,13 +405,14 @@ impl GraspDaemon {
         let gd4     = gd.clone();
 
         let runtime = dd.lock().await.runtime.clone();
+        let nm0     = nm.clone();
 
         runtime.spawn(async move {
             GraspDaemon::announce_loop(gd4, child4, send).await;
         });
 
         runtime.spawn(async move {
-            GraspDaemon::read_loop(gd3, child3, recv).await;
+            GraspDaemon::read_loop(gd3, nm0, child3, recv).await;
         });
 
     }
@@ -413,9 +423,11 @@ impl GraspDaemon {
 mod tests {
     use super::*;
     use crate::dull;
+    use crate::systemif::tests::FakeNetlinkInterface;
 
     async fn construct_grasp_daemon(rt: Arc<tokio::runtime::Runtime>,
                                     dc: Arc<Mutex<DullChild>>,
+                                    nm: Arc<dyn NetlinkManager + Send + Sync>,
                                     addr: &str) -> Result<GraspDaemon, std::io::Error> {
         let mut dd = dull::DullData::empty(rt.clone());
 
@@ -427,7 +439,9 @@ mod tests {
             ifn.linklocal6 = val;
         }
 
-        let (gd, _, _) = GraspDaemon::initdaemon(lifn.clone(), dc.clone()).await.unwrap();
+        let (gd, _, _) = GraspDaemon::initdaemon(lifn.clone(),
+                                                 dc.clone(),
+                                                 nm.clone()).await.unwrap();
         return Ok(gd);
     }
 
@@ -441,7 +455,10 @@ mod tests {
         let rt = Arc::new(tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap());
         rt.block_on(async {
             let dc = DullChild::empty(rt.clone());
-            let _gp = construct_grasp_daemon(rt.clone(), dc, "fe80::11").await.unwrap();
+            let ni = FakeNetlinkInterface {};
+            let nm: Arc<dyn NetlinkManager + Send + Sync> = Arc::new(ni);
+            let _gp = construct_grasp_daemon(rt.clone(), dc,
+                                             nm.clone(), "fe80::11").await.unwrap();
         })
     }
 
@@ -450,13 +467,16 @@ mod tests {
         let rt = Arc::new(tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap());
         let rt0 = rt.clone();
         rt0.block_on(async {
+            let ni = FakeNetlinkInterface {};
+            let nm: Arc<dyn NetlinkManager + Send + Sync> = Arc::new(ni);
             let dc = DullChild::empty(rt.clone());
             {
                 let dc0 = dc.lock().await;
                 let mut dd  = dc0.data.lock().await;
                 dd.abutifprefix = Some("fd0a:0a0a:0a0a:abcd::".parse::<Ipv6Addr>().unwrap());
             }
-            let _gp = construct_grasp_daemon(rt, dc, "fe80::11").await.unwrap();
+            let _gp = construct_grasp_daemon(rt, dc,
+                                             nm.clone(), "fe80::11").await.unwrap();
         });
         Ok(())
     }

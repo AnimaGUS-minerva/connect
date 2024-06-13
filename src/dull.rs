@@ -194,7 +194,9 @@ impl DullData {
         return ifnl.clone();
     }
 
-    pub async fn store_link_info(self: &mut DullData, lm: LinkMessage, ifindex: IfIndex) {
+    pub async fn store_link_info(self: &mut DullData,
+                                 _nm: Arc<dyn NetlinkManager + Send + Sync>,
+                                 lm: LinkMessage, ifindex: IfIndex) {
 
         let mut mydebug = self.debug.clone();
         let results = {
@@ -263,6 +265,7 @@ impl DullData {
 
             let handle = self.handle.as_ref().unwrap();
 
+            // XXX replace here with new call to NetlinkManager
             let result = handle
                 .link()
                 .set(results.1)
@@ -296,7 +299,9 @@ impl DullData {
         return ();
     }
 
-    pub async fn store_addr_info(self: &mut DullData, am: AddressMessage) -> Option<Arc<Mutex<DullInterface>>> {
+    pub async fn store_addr_info(self: &mut DullData,
+                                 _nm: Arc<dyn NetlinkManager + Send + Sync>,
+                                 am: AddressMessage) -> Option<Arc<Mutex<DullInterface>>> {
         let mut mydebug = self.debug.clone();
         let lh = am.header;
         let ifindex = lh.index;
@@ -361,7 +366,9 @@ impl DullData {
 
 }
 
-async fn gather_link_info(ldull: &Arc<Mutex<DullChild>>, lm: LinkMessage) -> Result<(), Error> {
+async fn gather_link_info(ldull: &Arc<Mutex<DullChild>>,
+                          nm: Arc<dyn NetlinkManager + Send + Sync>,
+                          lm: LinkMessage) -> Result<(), Error> {
     let dull     = ldull.lock().await;
     let mut data = dull.data.lock().await;
     let mut mydebug = data.debug.clone();
@@ -372,7 +379,7 @@ async fn gather_link_info(ldull: &Arc<Mutex<DullChild>>, lm: LinkMessage) -> Res
     let ifindex = lm.header.index;
     mydebug.debug_info(format!("ifindex: {:?} ", ifindex));
 
-    data.store_link_info(lm, ifindex).await;
+    data.store_link_info(nm, lm, ifindex).await;
 
     if mydebug.debug_namespaces {
         Command::new("ip")
@@ -386,14 +393,16 @@ async fn gather_link_info(ldull: &Arc<Mutex<DullChild>>, lm: LinkMessage) -> Res
     Ok(())
 }
 
-async fn gather_addr_info(ldull: &Arc<Mutex<DullChild>>, am: AddressMessage) -> Result<Option<Arc<Mutex<DullInterface>>>, Error> {
+async fn gather_addr_info(ldull: &Arc<Mutex<DullChild>>,
+                          nm: Arc<dyn NetlinkManager + Send + Sync>,
+                          am: AddressMessage) -> Result<Option<Arc<Mutex<DullInterface>>>, Error> {
     let dull     = ldull.lock().await;
     let mut data = dull.data.lock().await;
     let mut mydebug = data.debug.clone();
 
     data.cmd_cnt += 1;
     mydebug.debug_info(format!("\ncommand {}", data.cmd_cnt));
-    Ok(data.store_addr_info(am).await)
+    Ok(data.store_addr_info(nm, am).await)
 }
 
 
@@ -423,6 +432,7 @@ impl DullChild {
 }
 
 async fn abutment_process_one_netlink(child: Arc<Mutex<DullChild>>,
+                                      nm: Arc<dyn NetlinkManager + Send + Sync>,
                                       mut debug: DebugOptions, ikev2_started: bool,
                                       message: NetlinkMessage<RtnlMessage>) {
         let payload = message.payload;
@@ -440,10 +450,10 @@ async fn abutment_process_one_netlink(child: Arc<Mutex<DullChild>>,
                 /* when not acp_001, then it's a real interface going away */
             }
             InnerMessage(NewLink(stuff)) => {
-                gather_link_info(&child, stuff).await.unwrap();
+                gather_link_info(&child, nm.clone(), stuff).await.unwrap();
             }
             InnerMessage(NewAddress(stuff)) => {
-                let sifn = gather_addr_info(&child, stuff).await.unwrap();
+                let sifn = gather_addr_info(&child, nm.clone(), stuff).await.unwrap();
 
                 if let Some(lifn) = sifn {
                     let daemon_needed = {
@@ -452,7 +462,10 @@ async fn abutment_process_one_netlink(child: Arc<Mutex<DullChild>>,
                     };
 
                     if daemon_needed {
-                        let (bgd, recv, send) = GraspDaemon::initdaemon(lifn.clone(), child.clone()).await.unwrap();
+                        let (bgd, recv, send) =
+                            GraspDaemon::initdaemon(lifn.clone(),
+                                                    child.clone(),
+                                                    nm.clone()).await.unwrap();
                         let gd = Arc::new(Mutex::new(bgd));
                         let mut ifn = lifn.lock().await;
                         ifn.grasp_daemon = Some(gd.clone());
@@ -462,7 +475,7 @@ async fn abutment_process_one_netlink(child: Arc<Mutex<DullChild>>,
                     //                            .await
                     //.expect("traceosw command failed to start");
 
-                        GraspDaemon::start_loop(gd, recv, send, child.clone()).await;
+                        GraspDaemon::start_loop(gd, nm.clone(), recv, send, child.clone()).await;
                     }
 
                     // delay to let interfaces become stable.
@@ -484,6 +497,7 @@ async fn abutment_process_one_netlink(child: Arc<Mutex<DullChild>>,
 
 
 async fn abutment_process_netlink(child: Arc<Mutex<DullChild>>,
+                                  nm: Arc<dyn NetlinkManager + Send + Sync>,
                                   mut messages: mpsc::UnboundedReceiver<(NetlinkMessage<RtnlMessage>, rtnetlink::sys::SocketAddr)>,
                                   handle: Handle) -> () {
 
@@ -502,21 +516,27 @@ async fn abutment_process_netlink(child: Arc<Mutex<DullChild>>,
             (data.debug.clone(), data.ikev2_started)
         };
 
-        abutment_process_one_netlink(child.clone(), debug, ikev2_started, message).await;
+        abutment_process_one_netlink(child.clone(), nm.clone(), debug, ikev2_started, message).await;
     };
     ()
 }
 
-async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task::JoinHandle<Result<(),Error>>, String> {
+async fn listen_network<'a>(childinfo: &'a Arc<Mutex<DullChild>>,
+                            nm: Arc<dyn NetlinkManager + Send + Sync>) ->
+    Result<tokio::task::JoinHandle<Result<(),Error>>, String>
+{
 
     let child = childinfo.clone();   /* take reference to childinfo, for move below */
+    let nm0   = nm.clone();
     let (rt,rt2) = {
         let locked = child.lock().await;
         (locked.runtime.clone(), locked.runtime.clone())
     };
 
     /* NETLINK listen_network activity daemon: process it all in the background */
-    let listenhandle = rt2.spawn(async move {      // moves _child_, and _rt_ into spawn.
+    let listenhandle = rt2.spawn(async move {
+        // moves _child_, nm0, and _rt_ into spawn.
+
         // Open the netlink socket
         let (mut connection, handle, messages) = new_connection().map_err(|e| format!("{}", e)).unwrap();
 
@@ -533,7 +553,7 @@ async fn listen_network(childinfo: &Arc<Mutex<DullChild>>) -> Result<tokio::task
 
         child_lo_up(&handle).await;
 
-        abutment_process_netlink(child, messages, handle).await;
+        abutment_process_netlink(child, nm0.clone(), messages, handle).await;
         Ok(())
     });
     Ok(listenhandle)
@@ -704,14 +724,15 @@ async fn ignore_sigint(childinfo: &Arc<Mutex<DullChild>>) {
     });
 }
 
-async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream) {
+async fn child_processing(childinfo: Arc<Mutex<DullChild>>, sock: UnixStream,
+                          nm: Arc<dyn NetlinkManager + Send + Sync>) {
     let parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
     let mut cs = ControlStream::child(parent_stream);
 
     ignore_sigint(&childinfo).await;
 
     /* arrange to listen on network events in the new network namespace */
-    let netlink_handle = listen_network(&childinfo).await.unwrap();
+    let netlink_handle = listen_network(&childinfo, nm.clone()).await.unwrap();
 
     {
         let mut cil = childinfo.lock().await;
@@ -782,6 +803,8 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
                 .unwrap();
 
             let rt = Arc::new(rt0);
+            let ni = NetlinkInterface::new(rt.clone());
+            let nm: Arc<dyn NetlinkManager + Send + Sync> = Arc::new(ni);
             let childinfo = DullChild { runtime:        rt.clone(),
                                         ifid_number:    1,
                                         netlink_handle: None,
@@ -791,7 +814,7 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
             let art = childinfo.runtime.clone();
             let child = Arc::new(Mutex::new(childinfo));
 
-            let future1 = child_processing(child, pair.1);
+            let future1 = child_processing(child, pair.1, nm.clone());
             art.handle().block_on(future1);
 
             println!("now finished in child");
@@ -808,6 +831,7 @@ mod tests {
     use netlink_packet_core::{
         NetlinkHeader, NetlinkMessage, NetlinkPayload,
     };
+    use crate::systemif::tests::FakeNetlinkInterface;
 
     /* define a second interface with ifindex and a Link-Local address,
      * for Join messages
@@ -841,6 +865,8 @@ mod tests {
         let rt1 = rt0.clone();
         rt1.block_on(async {
             let child = DullChild::empty(rt0.clone());
+            let ni = FakeNetlinkInterface {};
+            let nm: Arc<dyn NetlinkManager + Send + Sync> = Arc::new(ni);
             let debug = DebugOptions::empty();
             let netlinkheader = NetlinkHeader { length: 1,
                                                 message_type: 2,
@@ -852,7 +878,7 @@ mod tests {
                 payload: NetlinkPayload::InnerMessage(NewAddress(setup_am_2()))
             };
 
-            abutment_process_one_netlink(child,
+            abutment_process_one_netlink(child, nm.clone(),
                                          debug, false /* ikev2_started */,
                                          msg).await;
         })
