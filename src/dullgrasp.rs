@@ -36,17 +36,16 @@ use netlink_packet_sock_diag::constants::IPPROTO_UDP;
 use cbor::CborType;
 use cbor::decoder::decode as cbor_decode;
 
-use crate::dull::{DullChild,DullInterface,DullData};
+use crate::dull::{DullInterface,DullData};
 use crate::grasp;
 use crate::grasp::{GraspMessage, GraspMessageType};
 use crate::error::ConnectError;
 use crate::adjacency::Adjacency;
-use crate::systemif::NetlinkManager;
 
 #[derive(Debug)]
 pub struct GraspDaemon {
     pub dullif:       Arc<Mutex<DullInterface>>,
-    pub dullchild:    Arc<Mutex<DullChild>>,
+    pub dulldata:     Arc<Mutex<DullData>>,
     pub addr:         Ipv6Addr,
     pub grasp_dest:   std::net::SocketAddr
 }
@@ -69,7 +68,9 @@ async fn setup_ula_for_interface(ifn: &DullInterface,
                                  llpieces[4],llpieces[5],
                                  llpieces[6],llpieces[7]);
         println!("ULA is using: {}", ula6);
-        dd.netlink.add_abutment_address(ifn.ifindex, ula6).await.unwrap();
+
+        let ddl = dd.netlink.lock().await;
+        ddl.add_abutment_address(ifn.ifindex, ula6).await.unwrap();
     }
 
     Ok(())
@@ -78,7 +79,7 @@ async fn setup_ula_for_interface(ifn: &DullInterface,
 
 impl GraspDaemon {
     pub async fn initdaemon(lifn: Arc<Mutex<DullInterface>>,
-                            child: Arc<Mutex<DullChild>>) ->
+                            dd:   Arc<Mutex<DullData>>) ->
         Result<(GraspDaemon,
                 tokio::net::UdpSocket,
                 tokio::net::UdpSocket),Error>
@@ -92,8 +93,7 @@ impl GraspDaemon {
         // if a ULA has been provided, then we doing ULA numbering
         // for the abutment interfaces.
         {
-            let cl = child.lock().await;
-            let dd = cl.data.lock().await;
+            let dd = dd.lock().await;
             if let Some(_ula) = dd.abutifprefix {
                 let _ = setup_ula_for_interface(&ifn, &dd).await.unwrap();
             }
@@ -125,7 +125,7 @@ impl GraspDaemon {
                 let gp = GraspDaemon { addr: llv6,
                                        grasp_dest:  SocketAddr::V6(SocketAddrV6::new(grasp_mcast, grasp::GRASP_PORT as u16, 0, ifindex)),
                                        dullif: lifn.clone(),
-                                       dullchild: child.clone(),
+                                       dulldata: dd.clone(),
                 };
                 return Ok((gp, recv, send))
             }
@@ -153,20 +153,20 @@ impl GraspDaemon {
     }
 
     pub async fn read_loop(gd: Arc<Mutex<GraspDaemon>>,
-                           dd: Arc<Mutex<DullChild>>,
+                           dd: Arc<Mutex<DullData>>,
                            recv: tokio::net::UdpSocket /*tokio::net::udp::RecvHalf*/) {
 
         //let _runtime = { dd.lock().await.runtime.clone() };
         let mut cnt: u32 = 0;
 
         let mut debug_graspdaemon = {
-            dd.lock().await.data.lock().await.debug.debug_graspdaemon
+            dd.lock().await.debug.debug_graspdaemon
         };
         let mut auto_up_adj = {
-            dd.lock().await.data.lock().await.auto_up_adj
+            dd.lock().await.auto_up_adj
         };
         let mut disable_ikev2 = {
-            dd.lock().await.data.lock().await.disable_ikev2
+            dd.lock().await.disable_ikev2
         };
         loop {
             let mut bufbytes = [0u8; 2048];
@@ -198,8 +198,7 @@ impl GraspDaemon {
                             }
 
                             // search list of interfaces now
-                            let dcl  = dd.lock().await;
-                            let data = dcl.data.lock().await;
+                            let data = dd.lock().await;
 
                             for (k,ldi) in &data.interfaces {
                                 let di = ldi.lock().await;
@@ -294,15 +293,15 @@ impl GraspDaemon {
             }
 
             debug_graspdaemon = {
-                dd.lock().await.data.lock().await.debug.debug_graspdaemon
+                dd.lock().await.debug.debug_graspdaemon
             };
 
             auto_up_adj = {
-                dd.lock().await.data.lock().await.auto_up_adj
+                dd.lock().await.auto_up_adj
             };
 
             disable_ikev2 = {
-                dd.lock().await.data.lock().await.disable_ikev2
+                dd.lock().await.disable_ikev2
             };
 
             cnt += 1;
@@ -310,7 +309,7 @@ impl GraspDaemon {
     }
 
     pub async fn construct_acp_mflood(gd: Arc<Mutex<GraspDaemon>>,
-                                      _dd: Arc<Mutex<DullChild>>) -> Result<CborType, ConnectError>
+                                      _dd: Arc<Mutex<DullData>>) -> Result<CborType, ConnectError>
     {
         let myllv6 = {
             let gdl = gd.lock().await;
@@ -338,7 +337,7 @@ impl GraspDaemon {
     }
 
     pub async fn announce_loop(gd: Arc<Mutex<GraspDaemon>>,
-                               dd: Arc<Mutex<DullChild>>,
+                               dd: Arc<Mutex<DullData>>,
                                send: tokio::net::UdpSocket /*tokio::net::udp::SendHalf*/) {
         let v6mcast = {
             let gld = gd.lock().await;
@@ -352,8 +351,7 @@ impl GraspDaemon {
             let bytes = mflood.serialize();
 
             let exitnow = {
-                let dcl = dd.lock().await;
-                let ddl = dcl.data.lock().await;
+                let ddl = dd.lock().await;
                 ddl.exit_now
             };
 
@@ -393,7 +391,7 @@ impl GraspDaemon {
     pub async fn start_loop(gd: Arc<Mutex<GraspDaemon>>,
                             recv: /*tokio::net::udp::RecvHalf*/ tokio::net::UdpSocket,
                             send: /*tokio::net::udp::SendHalf*/ tokio::net::UdpSocket,
-                            dd: Arc<Mutex<DullChild>>) {
+                            dd: Arc<Mutex<DullData>>) {
 
         let child3  = dd.clone();
         let child4  = dd.clone();
@@ -417,29 +415,38 @@ impl GraspDaemon {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dull;
     use crate::systemif::tests::FakeNetlinkInterface;
+    use crate::systemif::NetlinkManager;
 
-    async fn construct_grasp_daemon(rt: Arc<tokio::runtime::Runtime>,
-                                    dc: Arc<Mutex<DullChild>>,
+    async fn construct_grasp_daemon(_rt: Arc<tokio::runtime::Runtime>,
+                                    dd: Arc<Mutex<DullData>>,
                                     addr: &str) -> Result<GraspDaemon, std::io::Error> {
-        let mut dd = dull::DullData::empty(rt.clone());
-
         let val = addr.to_string().parse::<Ipv6Addr>().unwrap();
         let ifindex = 0;  // needs to be zero. lo is ifindex 0, bind() to lo
-        let lifn = dd.get_entry_by_ifindex(ifindex).await;
+        let lifn = {
+            let mut ldd = dd.lock().await;
+            ldd.get_entry_by_ifindex(ifindex).await
+        };
+
         {
             let mut ifn  = lifn.lock().await;
             ifn.linklocal6 = val;
         }
 
         let (gd, _, _) = GraspDaemon::initdaemon(lifn.clone(),
-                                                 dc.clone()).await.unwrap();
+                                                 dd.clone()).await.unwrap();
         return Ok(gd);
     }
 
-    async fn send_mflood_message(_dc: Arc<Mutex<DullChild>>) -> Result<(), std::io::Error> {
+    async fn send_mflood_message(_dc: Arc<Mutex<DullData>>) -> Result<(), std::io::Error> {
         Ok(())
+    }
+
+    fn make_dd(rt: Arc<tokio::runtime::Runtime>) -> Arc<Mutex<DullData>> {
+        let ni = FakeNetlinkInterface {};
+        let nm: Arc<Mutex<dyn NetlinkManager + Send + Sync>> = Arc::new(Mutex::new(ni));
+        let dd = Arc::new(Mutex::new(DullData::empty(rt.clone(), nm)));
+        dd
     }
 
 
@@ -447,9 +454,7 @@ mod tests {
     fn test_send_mflood() {
         let rt = Arc::new(tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap());
         rt.block_on(async {
-            let ni = FakeNetlinkInterface {};
-            let nm: Arc<dyn NetlinkManager + Send + Sync> = Arc::new(ni);
-            let dc = DullChild::empty0(rt.clone(), nm);
+            let dc  = make_dd(rt.clone());
             let _gp = construct_grasp_daemon(rt.clone(), dc,
                                              "fe80::11").await.unwrap();
         })
@@ -460,15 +465,12 @@ mod tests {
         let rt = Arc::new(tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap());
         let rt0 = rt.clone();
         rt0.block_on(async {
-            let ni = FakeNetlinkInterface {};
-            let nm: Arc<dyn NetlinkManager + Send + Sync> = Arc::new(ni);
-            let dc = DullChild::empty0(rt.clone(), nm);
+            let dd = make_dd(rt.clone());
             {
-                let dc0 = dc.lock().await;
-                let mut dd  = dc0.data.lock().await;
-                dd.abutifprefix = Some("fd0a:0a0a:0a0a:abcd::".parse::<Ipv6Addr>().unwrap());
+                let mut ddl = dd.lock().await;
+                ddl.abutifprefix = Some("fd0a:0a0a:0a0a:abcd::".parse::<Ipv6Addr>().unwrap());
             }
-            let _gp = construct_grasp_daemon(rt, dc,
+            let _gp = construct_grasp_daemon(rt, dd,
                                              "fe80::11").await.unwrap();
         });
         Ok(())

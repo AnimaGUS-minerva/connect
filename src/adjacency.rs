@@ -101,7 +101,6 @@ impl Adjacency {
 
     pub async fn make_acp(self: &mut Adjacency) -> Result<(), rtnetlink::Error> {
 
-        let handle;
         let vn;
         let ifn = self.interface.lock().await;
 
@@ -110,17 +109,11 @@ impl Adjacency {
             Some(gd) => { gd.lock().await }
         };
 
-        let mut dc = lgd.dullchild.lock().await;
-        vn = dc.allocate_ifid();
+        let mut dd = lgd.dulldata.lock().await;
+        vn = dd.allocate_ifid();
         self.acp_number = Some(vn);
 
-        let dd = dc.data.lock().await;
         let acpns = dd.acpns;
-
-        handle = match &dd.handle {
-            None => { return Ok(()); },
-            Some(handle) => handle
-        };
 
         let laddr = ifn.linklocal6.clone();
         let raddr = self.v6addr.clone();
@@ -130,9 +123,16 @@ impl Adjacency {
 
         println!("calling acp_tun with {} pair={}", self.acp_iface, self.pair_name);
 
-        acptun::create(&handle, &self.acp_iface, ifn.ifindex, laddr, raddr, vn).await.unwrap();
-
-        let mut acpresult = handle.link().get().match_name(self.acp_iface.clone()).execute();
+        let mut acpresult = {
+            let ddl = dd.netlink.lock().await;
+            match &ddl.fetch_handle() {
+                None => { return Ok(()); },
+                Some(handle) => {
+                    acptun::create(&handle, &self.acp_iface, ifn.ifindex, laddr, raddr, vn).await.unwrap();
+                    handle.link().get().match_name(self.acp_iface.clone()).execute()
+                }
+            }
+        };
         let acp_next  = acpresult.try_next().await;
         let acp_result = match acp_next {
             Err(repr) => { return Err(repr) },
@@ -150,17 +150,24 @@ impl Adjacency {
                  acp_link.header.index, vn,
                  acpns);
 
-        handle.link().set(acp_link.header.index).up().execute().await?;
-
-        if true {
-            // now move this created entity to the ACP NS.
-            handle
-                .link()
-                .set(acp_link.header.index)
-                .setns_by_pid(acpns.as_raw() as u32)
-                .execute()
-                .await?;
-        }
+        {
+            let ddl = dd.netlink.lock().await;
+            match &ddl.fetch_handle() {
+                None => { return Ok(()); },
+                Some(handle) => {
+                    handle.link().set(acp_link.header.index).up().execute().await?;
+                    if true {
+                        // now move this created entity to the ACP NS.
+                        handle
+                            .link()
+                            .set(acp_link.header.index)
+                            .setns_by_pid(acpns.as_raw() as u32)
+                            .execute()
+                            .await?;
+                    }
+                }
+            }
+        };
 
         Ok(())
     }

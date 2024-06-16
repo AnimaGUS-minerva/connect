@@ -53,6 +53,8 @@ use netlink_packet_route::{
 //use sysctl::Sysctl;
 use crate::dull::IfIndex;
 
+pub type NetlinkMessageQueue = futures::channel::mpsc::UnboundedReceiver<(NetlinkMessage<RtnlMessage>, SocketAddr)>;
+
 #[async_trait]
 pub trait NetlinkManager: Send + Sync {
     async fn create_ethernet_pair_for_bridge(self: &Self,
@@ -66,11 +68,14 @@ pub trait NetlinkManager: Send + Sync {
                                   abutmentif: IfIndex,
                                   addr:       Ipv6Addr)
                                   -> Result<(), rtnetlink::Error>;
+
+    fn fetch_handle<'a>(self: &'a Self) -> Option<&'a Handle>;
+    fn fetch_messages<'a>(self: &'a mut Self) -> Option<&'a mut NetlinkMessageQueue>;
 }
 
 pub struct NetlinkInterface {
     pub handle:     Handle,
-    pub messages:   futures::channel::mpsc::UnboundedReceiver<(NetlinkMessage<RtnlMessage>, SocketAddr)>,
+    pub messages:   NetlinkMessageQueue
 }
 
 impl NetlinkInterface {
@@ -137,6 +142,13 @@ impl NetlinkInterface {
 
 #[async_trait]
 impl NetlinkManager for NetlinkInterface {
+    fn fetch_handle<'a>(self: &'a NetlinkInterface) -> Option<&'a Handle> {
+        Some(&self.handle)
+    }
+    fn fetch_messages<'a>(self: &'a mut NetlinkInterface) -> Option<&'a mut NetlinkMessageQueue> {
+        Some(&mut self.messages)
+    }
+
     async fn create_ethernet_pair_for_bridge(self: &Self,
                                              dullpid:  Pid,
                                              bridgeif: IfIndex) -> Result<(), rtnetlink::Error> {
@@ -583,6 +595,14 @@ pub mod tests {
     }
     #[async_trait]
     impl NetlinkManager for FakeNetlinkInterface {
+        fn fetch_handle<'a>(self: &'a Self) -> Option<&'a Handle> {
+            None
+        }
+
+        fn fetch_messages<'a>(self: &'a mut Self) -> Option<&'a mut NetlinkMessageQueue> {
+            None
+        }
+
         async fn create_ethernet_pair_for_bridge(self: &Self,
                                                  _dullpid:  Pid,
                                                  bridgeif: IfIndex) -> Result<(), rtnetlink::Error> {
