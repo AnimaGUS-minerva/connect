@@ -45,7 +45,5 @@ rtnetlink            = { git = 'https://github.com/rust-netlink/rtnetlink' }
 # netlink-packet-route = { path = "../netlink/netlink-packet-route" }
 hex-literal   = { git = "https://github.com/AnimaGUS-minerva/utils.git", branch = "allow-hash-comments-in-hex" }
 
-[build]
-rustflags = ["--cfg", "tokio_unstable"]
 
 

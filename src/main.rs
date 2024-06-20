@@ -53,7 +53,7 @@ pub mod openswan;
 pub mod openswanwhack;
 pub mod systemif;
 
-static VERSION: &str = "0.9.0";
+static VERSION: &str = "0.9.4";
 // static mut ARGC: isize = 0 as isize;
 // static mut ARGV: *mut *mut i8 = 0 as *mut *mut i8;
 
@@ -163,6 +163,7 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
                  acpinit:  acp::AcpInit,
                  args: ConnectOptions) -> Result<(), String> {
 
+    //console_subscriber::init();
     let mut dull = dull::Dull::from_dull_init(dullinit);
     let mut acp  = acp::Acp::from_acp_init(acpinit);
 
