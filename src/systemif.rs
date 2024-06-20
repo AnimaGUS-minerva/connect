@@ -490,13 +490,11 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                             }
                         },
                         LinkInfo::Data(_data) => { /* ignore bridge data */ }
-                        // LinkInfo::SlaveData(_data) => { /* ignore bridge data */ }
-                        /*
-                        LinkInfo::SlaveKind(_data) => {
+                        LinkInfo::PortData(_data) => { /* ignore bridge data */ }
+                        LinkInfo::PortKind(_data) => {
                             /* what exactly to do with this data? */
                             ifn.bridge_slave = true;
-                    }
-                         */
+                        }
                         _ => { si.link_debug(format!("other info: {:?}", stuff)); }
                     }
                 }
