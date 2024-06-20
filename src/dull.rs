@@ -807,30 +807,29 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
 mod tests {
     use super::*;
     use netlink_packet_route::address::AddressHeader;
-    use libc::AF_INET6;
     use netlink_packet_core::{
         NetlinkHeader, NetlinkMessage, NetlinkPayload,
     };
     use crate::systemif::tests::FakeNetlinkInterface;
+    use netlink_packet_route::AddressFamily;
 
     /* define a second interface with ifindex and a Link-Local address,
      * for Join messages
      */
     fn setup_am_2() -> AddressMessage {
-        use netlink_packet_route::link::LinkAttribute;
+        let mut header = AddressHeader::default();
+        header.family = AddressFamily::Inet6;
+        header.prefix_len = 64;
+        header.index = 12;
 
-        AddressMessage {
-            header: AddressHeader { family: AF_INET6 as u8,
-                                    prefix_len: 64,
-                                    flags: 0,
-                                    scope: 0,
-                                    index: 12
-            },
-            nlas: vec![
-                LinkAttribute::Address(vec![0xfe, 0x80, 0,0, 0,0,0,0,
-                                  0x00, 0x00, 0,0, 0,0,0,2])
-            ],
-        }
+        let mut amb = AddressMessage::default();
+        amb.header = header;
+        amb.attributes = vec![
+            AddressAttribute::Address(std::net::IpAddr::V6(
+                Ipv6Addr::new(0xfe80,0,0,0,
+                              0x0,   0,0,2)))
+        ];
+        amb
     }
 
     #[test]
@@ -849,15 +848,15 @@ mod tests {
                 Arc::new(Mutex::new(ni));
             let child = Arc::new(Mutex::new(DullData::empty(rt0.clone(), nm)));
             let debug = DebugOptions::empty();
-            let netlinkheader = NetlinkHeader { length: 1,
-                                                message_type: 2,
-                                                flags: 3,
-                                                sequence_number: 4,
-                                                port_number: 1234 };
-            let msg: NetlinkMessage<RouteNetlinkMessage> = NetlinkMessage {
-                header:  netlinkheader,
-                payload: NetlinkPayload::InnerMessage(NewAddress(setup_am_2()))
-            };
+
+            let mut netlinkheader = NetlinkHeader::default();
+            netlinkheader.length = 1;
+            netlinkheader.message_type = 2;
+            netlinkheader.flags = 3;
+            netlinkheader.sequence_number = 4;
+            netlinkheader.port_number = 1234;
+            let pl = NetlinkPayload::InnerMessage(NewAddress(setup_am_2()));
+            let msg = NetlinkMessage::new(netlinkheader, pl);
 
             abutment_process_one_netlink(child,
                                          debug, false /* ikev2_started */,

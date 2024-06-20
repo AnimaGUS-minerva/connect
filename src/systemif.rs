@@ -617,6 +617,8 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>,
 pub mod tests {
     use super::*;
     use netlink_packet_route::link::{LinkAttribute,LinkHeader,LinkInfo};
+    use netlink_packet_route::link::LinkFlags;
+    use netlink_packet_route::link::InfoKind;
 
     pub struct FakeNetlinkInterface {
     }
@@ -648,76 +650,60 @@ pub mod tests {
         }
     }
 
+    fn make_lh() -> LinkHeader {
+        let mut head = LinkHeader::default();
+        head.interface_family = netlink_packet_route::AddressFamily::Other(0);
+        head.index = 1;
+        head.link_layer_type = LinkLayerType::Ether;
+        head.flags = LinkFlags::empty();
+        head
+    }
+
     fn make_eth0() -> LinkMessage {
-        use libc::ARPHRD_ETHER;
-        LinkMessage {
-            header: LinkHeader {
-                interface_family: 0,
-                index: 1,
-                link_layer_type: ARPHRD_ETHER,
-                flags: 0,
-                change_mask: 0,
-            },
-            nlas: vec![
-                LinkAttribute::IfName("eth0".to_string()),
-                LinkAttribute::TxQueueLen(0),
-            ],
-        }
+
+        let mut lm = LinkMessage::default();
+        lm.header = make_lh();
+        lm.attributes = vec![
+            LinkAttribute::IfName("eth0".to_string()),
+            LinkAttribute::TxQueueLen(0),
+        ];
+        lm
     }
 
     fn make_eth0_slave() -> LinkMessage {
-        LinkMessage {
-            header: LinkHeader {
-                interface_family: 0,
-                index: 1,
-                link_layer_type: ARPHRD_ETHER,
-                flags: 0,
-                change_mask: 0,
-            },
-            nlas: vec![
+        let mut lm = LinkMessage::default();
+        lm.header = make_lh();
+        lm.attributes = vec![
                 LinkAttribute::IfName("eth0".to_string()),
                 LinkAttribute::TxQueueLen(0),
-                LinkAttribute::Master(2)
-            ],
-        }
+                LinkAttribute::Controller(2)  // ifindex=2 "trusted", below.
+        ];
+        lm
     }
 
-    fn make_trusted() -> netlink_packet_route::link::LinkMessage {
-        use netlink_packet_route::link::InfoKind;
-
-        LinkMessage {
-            header: LinkHeader {
-                interface_family: 0,
-                index: 2,
-                link_layer_type: ARPHRD_ETHER,
-                flags: 0,
-                change_mask: 0,
-            },
-            nlas: vec![
-                LinkAttribute::IfName("trusted".to_string()),
-                LinkAttribute::OperState(State::Up),
-                LinkAttribute::TxQueueLen(0),
-                LinkAttribute::Info(vec![LinkInfo::Kind(InfoKind::Bridge)]),
-            ],
-        }
+    fn make_trusted() -> LinkMessage {
+        let mut lm = LinkMessage::default();
+        lm.header = make_lh();
+        lm.header.index = 2;
+        lm.attributes = vec![
+            LinkAttribute::IfName("trusted".to_string()),
+            LinkAttribute::OperState(State::Up),
+            LinkAttribute::TxQueueLen(0),
+            LinkAttribute::LinkInfo(vec![LinkInfo::Kind(InfoKind::Bridge)]),
+        ];
+        lm
     }
 
     fn make_a_lone_if() -> LinkMessage {
-        LinkMessage {
-            header: LinkHeader {
-                interface_family: 0,
-                index: 1,
-                link_layer_type: ARPHRD_ETHER,
-                flags: 0,
-                change_mask: 0,
-            },
-            nlas: vec![
-                LinkAttribute::IfName("eth1".to_string()),
-                LinkAttribute::OperState(State::Up),
-                LinkAttribute::IfName("eth1".to_string()),
-                LinkAttribute::TxQueueLen(0),
-            ],
-        }
+        let mut lm = LinkMessage::default();
+        lm.header = make_lh();
+        lm.attributes = vec![
+            LinkAttribute::IfName("eth1".to_string()),
+            LinkAttribute::OperState(State::Up),
+            LinkAttribute::IfName("eth1".to_string()),
+            LinkAttribute::TxQueueLen(0),
+        ];
+        lm
     }
 
     async fn a_basic_eth0(si: &mut SystemInterfaces) -> Result<(), std::io::Error> {
