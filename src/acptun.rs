@@ -24,12 +24,14 @@ use rtnetlink::{Handle};
 
 pub async fn create(handle:  &Handle,
                     tunname: &str,
-                    _physdev_index: IfIndex,
+                    physdev_index: IfIndex,
                     _tunloc: Ipv6Addr,
                     _tunrem: Ipv6Addr,
                     tunkey: u16) -> Result<(), rtnetlink::Error> {
 
-    handle.link().add().xfrmtun(tunname.to_string(), tunkey.into()).execute().await
+    handle.link().add().xfrmtun_link(tunname.to_string(),
+                                     tunkey.into(),
+                                     physdev_index.into()).execute().await
 }
 
 
