@@ -239,6 +239,9 @@ impl NetlinkManager for NetlinkInterface {
                 } else if code == NonZeroI32::new(-22).unwrap() {
                     println!("network macvlan EINVAL");
                     return Ok(())
+                } else if code == NonZeroI32::new(-95).unwrap() {
+                    println!("network macvlan ENOTSUPPORTED (part of bridge?)");
+                    return Ok(())
                 } else {
                     println!("macvlan new error: {:?}", result);
                 }
