@@ -252,8 +252,8 @@ impl AcpData {
                         }
                     }
                 },
-                //LinkAttribute::CacheInfo(_info) => { /* nothing */},
-                //LinkAttribute::Flags(_info)     => { /* nothing */},
+                AddressAttribute::CacheInfo(_info) => { /* nothing */},
+                AddressAttribute::Flags(_info)     => { /* nothing */},
                 _ => {
                     print!("data: {:?} ", nlas);
                 }
@@ -401,6 +401,12 @@ async fn listen_network(childinfo: &Arc<Mutex<AcpChild>>) -> Result<tokio::task:
                     }
                 }
                 InnerMessage(NewRoute(_thing)) => {
+                    /* just ignore these! */
+                }
+                InnerMessage(DelAddress(_thing)) => {
+                    /* just ignore these! */
+                }
+                InnerMessage(DelRoute(_thing)) => {
                     /* just ignore these! */
                 }
                 //_ => { println!("generic message type: {} skipped", payload.message_type()); }
