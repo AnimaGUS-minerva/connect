@@ -14,7 +14,7 @@ serde_cbor = "0.11.1"
 #moz_cbor   = { version = "0.1", path="/ssw/projects/pandora/riotos/cbor-rust" }
 moz_cbor   = { git = "https://github.com/AnimaGUS-minerva/cbor-rust.git", branch = "implement-strings" }
 nix        = { version = "0.19" }
-rtnetlink     = { features = [ "tokio_socket" ], version = "0.14" }
+rtnetlink     = { features = [ "tokio_socket" ], version = "0.14.1" }
 netlink-packet-route = { version = "0.20" }
 netlink-packet-core  = { version = "0.7" }
 netlink-proto = { version = "*", features = [ "tokio_socket" ] }
@@ -31,6 +31,7 @@ custom_error  = "*"
 rand          = "*"
 structopt     = "0.3"
 sysctl        = "0.4"
+console-subscriber = "*"
 
 [build-dependencies]
 cc = "1.0"
@@ -40,9 +41,11 @@ tokio-test    = "0.4.2"
 hex-literal   = { version = "0.3.3" }
 
 [patch.crates-io]
-# rtnetlink            = { features = [ "tokio_socket" ], path = "../netlink/rtnetlink" }
+rtnetlink            = { git = 'https://github.com/rust-netlink/rtnetlink' }
 # netlink-packet-route = { path = "../netlink/netlink-packet-route" }
 hex-literal   = { git = "https://github.com/AnimaGUS-minerva/utils.git", branch = "allow-hash-comments-in-hex" }
 
+[build]
+rustflags = ["--cfg", "tokio_unstable"]
 
 
