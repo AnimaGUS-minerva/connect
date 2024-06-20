@@ -46,11 +46,12 @@ use crate::adjacency::Adjacency;
 pub struct GraspDaemon {
     pub dullif:       Arc<Mutex<DullInterface>>,
     pub dulldata:     Arc<Mutex<DullData>>,
-    pub addr:         Ipv6Addr,
+    pub addr:         Ipv6Addr,    /* where to contact this host (maybe ula) */
+    pub originaddr:   Ipv6Addr,    /* what address to send from (LLv6) */
     pub grasp_dest:   std::net::SocketAddr
 }
 
-async fn setup_ula_for_interface(ifn: &DullInterface,
+async fn setup_ula_for_interface(ifn: &mut DullInterface,
                                  dd: &DullData) ->
     Result<(),Error>
 {
@@ -71,6 +72,7 @@ async fn setup_ula_for_interface(ifn: &DullInterface,
 
         let ddl = dd.netlink.lock().await;
         ddl.add_abutment_address(ifn.ifindex, ula6).await.unwrap();
+        ifn.ula6 = Some(ula6);
     }
 
     Ok(())
@@ -84,7 +86,7 @@ impl GraspDaemon {
                 tokio::net::UdpSocket,
                 tokio::net::UdpSocket),Error>
 {
-        let ifn  = lifn.lock().await;
+        let mut ifn  = lifn.lock().await;
         let llv6 = ifn.linklocal6;
         let ifindex = ifn.ifindex;
 
@@ -92,12 +94,19 @@ impl GraspDaemon {
 
         // if a ULA has been provided, then we doing ULA numbering
         // for the abutment interfaces.
-        {
+        let myv6 = {
             let dd = dd.lock().await;
             if let Some(_ula) = dd.abutifprefix {
-                let _ = setup_ula_for_interface(&ifn, &dd).await.unwrap();
+                let _ = setup_ula_for_interface(&mut ifn, &dd).await.unwrap();
+                if let Some(addr) = ifn.ula6 {
+                    addr
+                } else {
+                    llv6
+                }
+            } else {
+                llv6
             }
-        }
+        };
 
         let rsin6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED,
                                       grasp::GRASP_PORT as u16, 0, ifindex);
@@ -122,7 +131,8 @@ impl GraspDaemon {
                                               0 as u16, 0, ifindex);
                 let send = UdpSocket::bind(ssin6).await.unwrap();
 
-                let gp = GraspDaemon { addr: llv6,
+                let gp = GraspDaemon { originaddr: llv6,
+                                       addr: myv6,
                                        grasp_dest:  SocketAddr::V6(SocketAddrV6::new(grasp_mcast, grasp::GRASP_PORT as u16, 0, ifindex)),
                                        dullif: lifn.clone(),
                                        dulldata: dd.clone(),
@@ -311,15 +321,15 @@ impl GraspDaemon {
     pub async fn construct_acp_mflood(gd: Arc<Mutex<GraspDaemon>>,
                                       _dd: Arc<Mutex<DullData>>) -> Result<CborType, ConnectError>
     {
-        let myllv6 = {
+        let (myv6,myllv6) = {
             let gdl = gd.lock().await;
-            gdl.addr
+            (gdl.addr,gdl.originaddr)
         };
 
         let mut rng = rand::thread_rng();
         let sesid = rng.gen::<u32>();
 
-        let ike_locator = grasp::GraspLocator::O_IPv6_LOCATOR { v6addr: myllv6,
+        let ike_locator = grasp::GraspLocator::O_IPv6_LOCATOR { v6addr: myv6,
                                                          transport_proto: IPPROTO_UDP,
                                                          port_number: 500 };
         let acp_objective =grasp::GraspObjective { objective_name: "AN_ACP".to_string(),
