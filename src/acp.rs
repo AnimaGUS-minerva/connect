@@ -45,20 +45,28 @@ use tokio::time::{sleep, Duration};
 
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
-use netlink_packet_route::link::nlas::AfSpecInet;
-use netlink_packet_route::link::nlas::State;
+//use netlink_packet_route::link::AfSpecInet;
+use netlink_packet_route::link::State;
 use rtnetlink::{
     constants::{RTMGRP_IPV6_ROUTE, RTMGRP_IPV6_IFADDR, RTMGRP_LINK},
     Handle, Error,
     new_connection,
-    sys::{AsyncSocket, SocketAddr},
+};
+use netlink_proto::sys::{AsyncSocket, SocketAddr};
+
+use netlink_packet_core::{
+    NetlinkPayload::InnerMessage
 };
 use netlink_packet_route::{
-    NetlinkPayload::InnerMessage,
-    RtnlMessage::NewLink,
-    RtnlMessage::NewAddress,
-    RtnlMessage::NewRoute,
-    LinkMessage, AddressMessage
+    RouteNetlinkMessage::NewLink,
+    RouteNetlinkMessage::NewAddress,
+    RouteNetlinkMessage::NewRoute,
+    //RouteNetlinkMessage::DelRoute,
+    //RouteNetlinkMessage::DelAddress,
+    //RouteNetlinkMessage::DelLink,
+    link::LinkMessage,
+    address::AddressMessage,
+    address::AddressAttribute
 };
 
 /*
@@ -147,30 +155,31 @@ impl AcpData {
             let     ifna = self.get_entry_by_ifindex(ifindex).await;
             let mut ifn  = ifna.lock().await;
 
-            for nlas in lm.nlas {
-                use netlink_packet_route::link::nlas::Nla;
+            for nlas in lm.attributes {
+                use netlink_packet_route::link::LinkAttribute;
                 match nlas {
-                    Nla::IfName(name) => {
+                    LinkAttribute::IfName(name) => {
                         mydebug.debug_info(format!("ifname: {}", name));
                         if name.len() > 3 && name[0..4] == "acp_".to_string() {
                             ifn.is_acp = true;
                         }
                         ifn.ifname = name;
                     },
-                    Nla::Mtu(bytes) => {
+                    LinkAttribute::Mtu(bytes) => {
                         mydebug.debug_info(format!("mtu: {}", bytes));
                         ifn.mtu = bytes;
                     },
-                    Nla::Address(addrset) => {
+                    LinkAttribute::Address(addrset) => {
                         mydebug.debug_info(format!("lladdr: {:0x}:{:0x}:{:0x}:{:0x}:{:0x}:{:0x}", addrset[0], addrset[1], addrset[2], addrset[3], addrset[4], addrset[5]));
                     },
-                    Nla::OperState(state) => {
+                    LinkAttribute::OperState(state) => {
                         if state == State::Up {
                             mydebug.debug_info(format!("device is up"));
                         }
                         ifn.oper_state = state;
                     },
-                    Nla::AfSpecInet(inets) => {
+                    /*
+                    LinkAttribute::AfSpecInet(inets) => {
                         for ip in inets {
                             match ip {
                                 AfSpecInet::Inet(_v4) => { },
@@ -180,7 +189,8 @@ impl AcpData {
                                 _ => {}
                             }
                         }
-                    },
+                },
+                     */
                     _ => {
                         //print!("data: {:?} ", nlas);
                     }
@@ -215,33 +225,35 @@ impl AcpData {
         let     ifna = self.get_entry_by_ifindex(ifindex).await;
         let mut ifn  = ifna.lock().await;
 
-        for nlas in am.nlas {
-            use netlink_packet_route::address::Nla;
+        for nlas in am.attributes {
+            use core::net::IpAddr::{V4,V6};
             match nlas {
-                Nla::Address(addrset) => {
-                    if addrset.len() != 16 {
-                        continue;
-                    }
+                AddressAttribute::Address(addrset) => {
+                    match addrset {
+                        V4(_addr) => {},
+                        V6(addr) => {
+                            /*
+                            let mut addrbytes: [u8; 16] = [0; 16];
+                            let addr0bytes = addr.octets();
+                            for n in 0..=15 {
+                                addrbytes[n] = addr0bytes[n]
+                            }
 
-                    let mut addrbytes: [u8; 16] = [0; 16];
-                    for n in 0..=15 {
-                        addrbytes[n] = addrset[n]
+                            let llv6 = Ipv6Addr::from(addrbytes);
+                            //if !llv6.is_unicast_link_local() {
+                            // continue;
+                            //}
+                            */
+                            if addr.segments()[0] != 0xfe80 {
+                                continue;
+                            }
+                            ifn.linklocal6 = addr;
+                            mydebug.debug_info(format!("llv6: {}", ifn.linklocal6));
+                        }
                     }
-                    // this fails for Brian, not clear why yet.
-                    //let addrbytes: [u8; 16] = addrset.try_into().unwrap();
-
-                    let llv6 = Ipv6Addr::from(addrbytes);
-                    //if !llv6.is_unicast_link_local() {
-                    // continue;
-                    //}
-                    if llv6.segments()[0] != 0xfe80 {
-                        continue;
-                    }
-                    ifn.linklocal6 = llv6;
-                    mydebug.debug_info(format!("llv6: {}", ifn.linklocal6));
                 },
-                Nla::CacheInfo(_info) => { /* nothing */},
-                Nla::Flags(_info)     => { /* nothing */},
+                //LinkAttribute::CacheInfo(_info) => { /* nothing */},
+                //LinkAttribute::Flags(_info)     => { /* nothing */},
                 _ => {
                     print!("data: {:?} ", nlas);
                 }

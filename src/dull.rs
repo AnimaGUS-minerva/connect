@@ -28,8 +28,8 @@ extern crate tokio;
 use gag::Redirect;
 
 use std::sync::Arc;
-use netlink_packet_route::NetlinkMessage;
-use netlink_packet_route::RtnlMessage;
+use netlink_packet_core::NetlinkMessage;
+use netlink_packet_route::RouteNetlinkMessage;
 use crate::control;
 use crate::dullgrasp;
 use crate::dullgrasp::GraspDaemon;
@@ -59,21 +59,25 @@ use sysctl::Sysctl;
 use futures::lock::Mutex;
 use futures::stream::{StreamExt, TryStreamExt};
 //use futures::stream::{StreamExt};
-use netlink_packet_route::link::nlas::AfSpecInet;
-use netlink_packet_route::link::nlas::State;
+//use netlink_packet_route::link::AfSpecInet;
+use netlink_packet_route::link::State;
 use rtnetlink::{
     Handle, Error,
     //sys::{AsyncSocket},
 };
-use netlink_packet_route::{
+use netlink_packet_core::{
     NetlinkPayload::InnerMessage,
-    RtnlMessage::NewLink,
-    RtnlMessage::NewAddress,
-    RtnlMessage::NewRoute,
-    RtnlMessage::DelRoute,
-    RtnlMessage::DelAddress,
-    RtnlMessage::DelLink,
-    LinkMessage, AddressMessage
+};
+use netlink_packet_route::{
+    RouteNetlinkMessage::NewLink,
+    RouteNetlinkMessage::NewAddress,
+    RouteNetlinkMessage::NewRoute,
+    RouteNetlinkMessage::DelRoute,
+    RouteNetlinkMessage::DelAddress,
+    RouteNetlinkMessage::DelLink,
+    link::LinkMessage,
+    address::AddressMessage,
+    address::AddressAttribute
 };
 
 /*
@@ -214,24 +218,24 @@ impl DullData {
             let mut ifn  = ifna.lock().await;
 
 
-            for nlas in lm.nlas {
-                use netlink_packet_route::link::nlas::Nla;
+            for nlas in lm.attributes {
+                use netlink_packet_route::link::LinkAttribute;
                 match nlas {
-                    Nla::IfName(name) => {
+                    LinkAttribute::IfName(name) => {
                         mydebug.debug_info(format!("ifname: {}", name));
                         if name.len() > 3 && name[0..4] == "acp_".to_string() {
                             ifn.is_acp = true;
                         }
                         ifn.ifname = name;
                     },
-                    Nla::Mtu(bytes) => {
+                    LinkAttribute::Mtu(bytes) => {
                         mydebug.debug_info(format!("mtu: {}", bytes));
                         ifn.mtu = bytes;
                     },
-                    Nla::Address(addrset) => {
+                    LinkAttribute::Address(addrset) => {
                         mydebug.debug_info(format!("lladdr: {:0x}:{:0x}:{:0x}:{:0x}:{:0x}:{:0x}", addrset[0], addrset[1], addrset[2], addrset[3], addrset[4], addrset[5]));
                     },
-                    Nla::OperState(state) => {
+                    LinkAttribute::OperState(state) => {
                         match state {
                             State::Up => {
                                 mydebug.debug_info(format!("device is up"));
@@ -242,7 +246,8 @@ impl DullData {
                             }
                         };
                     },
-                    Nla::AfSpecInet(inets) => {
+                    /*
+                    AfSpecInet::DevConf(inets) => {
                         for ip in inets {
                             match ip {
                                 AfSpecInet::Inet(_v4) => { },
@@ -252,9 +257,10 @@ impl DullData {
                                 _ => {}
                             }
                         }
-                    },
+                },
+                    */
                     _ => {
-                        //print!("data: {:?} ", nlas);
+                        print!("data: {:?} ", nlas);
                     }
                 }
             }
@@ -315,42 +321,47 @@ impl DullData {
         let lh = am.header;
         let ifindex = lh.index;
 
-        mydebug.debug_info(format!("ifindex: {} family: {}", ifindex, lh.family));
+        mydebug.debug_info(format!("ifindex: {} family: {:#?}", ifindex, lh.family));
 
         let     ifna = self.get_entry_by_ifindex(ifindex).await;
         let mut ifn  = ifna.lock().await;
 
-        for nlas in am.nlas {
-            use netlink_packet_route::address::Nla;
+        for nlas in am.attributes {
+            use core::net::IpAddr::{V4,V6};
             match nlas {
-                Nla::Address(addrset) => {
-                    if addrset.len() != 16 {
-                        continue;
-                    }
-                    let mut addrbytes: [u8; 16] = [0; 16];
-                    for n in 0..=15 {
-                        addrbytes[n] = addrset[n]
-                    }
-                    //let addrbytes: [u8; 16] = addrset.try_into().unwrap();
-                    let llv6 = Ipv6Addr::from(addrbytes);
-                    //if !llv6.is_unicast_link_local() {
-                    // continue;
-                    //}
-                    let fseg = llv6.segments()[0];
-                    if fseg == 0xfe80 {
-                        // IPv6 LL prefix
-                        ifn.linklocal6 = llv6;
-                        mydebug.debug_info(format!("llv6: {}", ifn.linklocal6));
-                    } else if (fseg & 0xfd00) == 0xfd00 {
-                        // IPv6 ULA prefix
-                        mydebug.debug_info(format!("ula6: {}", llv6));
-                        ifn.ula6 = Some(llv6);
-                    } else {
-                        continue;
+                AddressAttribute::Address(addrset) => {
+                    match addrset {
+                        V4(_addr) => {},
+                        V6(addr) => {
+
+                            let mut addrbytes: [u8; 16] = [0; 16];
+                            let addr0bytes = addr.octets();
+                            // copy the bytes
+                            for n in 0..=15 {
+                                addrbytes[n] = addr0bytes[n]
+                            }
+
+                            let llv6 = Ipv6Addr::from(addrbytes);
+                            //if !llv6.is_unicast_link_local() {
+                            // continue;
+                            //}
+                            let fseg = llv6.segments()[0];
+                            if fseg == 0xfe80 {
+                                // IPv6 LL prefix
+                                ifn.linklocal6 = llv6;
+                                mydebug.debug_info(format!("llv6: {}", ifn.linklocal6));
+                            } else if (fseg & 0xfd00) == 0xfd00 {
+                                // IPv6 ULA prefix
+                                mydebug.debug_info(format!("ula6: {}", llv6));
+                                ifn.ula6 = Some(llv6);
+                            } else {
+                                continue;
+                            }
+                        }
                     }
                 },
-                Nla::CacheInfo(_info) => { /* nothing */},
-                Nla::Flags(_info)     => { /* nothing */},
+                //LinkAttribute::CacheInfo(_info) => { /* nothing */},
+                //LinkAttribute::Flags(_info)     => { /* nothing */},
                 _ => {
                     mydebug.debug_info(format!("data: {:?} ", nlas));
                 }
@@ -412,7 +423,7 @@ async fn gather_addr_info(ldc: &Arc<Mutex<DullData>>,
 
 async fn abutment_process_one_netlink(child: Arc<Mutex<DullData>>,
                                       mut debug: DebugOptions, ikev2_started: bool,
-                                      message: NetlinkMessage<RtnlMessage>) {
+                                      message: NetlinkMessage<RouteNetlinkMessage>) {
         let payload = message.payload;
         match payload {
             InnerMessage(DelRoute(_stuff)) => {
@@ -778,8 +789,8 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netlink_packet_route::AddressHeader;
-    use netlink_packet_route::AF_INET6;
+    use netlink_packet_route::address::AddressHeader;
+    use libc::AF_INET6;
     use netlink_packet_core::{
         NetlinkHeader, NetlinkMessage, NetlinkPayload,
     };
@@ -789,7 +800,7 @@ mod tests {
      * for Join messages
      */
     fn setup_am_2() -> AddressMessage {
-        use netlink_packet_route::address::nlas::Nla;
+        use netlink_packet_route::link::LinkAttribute;
 
         AddressMessage {
             header: AddressHeader { family: AF_INET6 as u8,
@@ -799,7 +810,7 @@ mod tests {
                                     index: 12
             },
             nlas: vec![
-                Nla::Address(vec![0xfe, 0x80, 0,0, 0,0,0,0,
+                LinkAttribute::Address(vec![0xfe, 0x80, 0,0, 0,0,0,0,
                                   0x00, 0x00, 0,0, 0,0,0,2])
             ],
         }
@@ -826,7 +837,7 @@ mod tests {
                                                 flags: 3,
                                                 sequence_number: 4,
                                                 port_number: 1234 };
-            let msg: NetlinkMessage<RtnlMessage> = NetlinkMessage {
+            let msg: NetlinkMessage<RouteNetlinkMessage> = NetlinkMessage {
                 header:  netlinkheader,
                 payload: NetlinkPayload::InnerMessage(NewAddress(setup_am_2()))
             };

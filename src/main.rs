@@ -14,6 +14,7 @@
    limitations under the License.
  *
  */
+#![feature(ip_in_core)]
 
 extern crate sysctl;
 

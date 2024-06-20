@@ -20,40 +20,42 @@ extern crate sysctl;
 
 use std::sync::Arc;
 use std::collections::HashMap;
+use std::num::NonZeroI32;
 use nix::unistd::Pid;
 use std::net::Ipv6Addr;
 use async_trait::async_trait;
 use futures::stream::{StreamExt, TryStreamExt};
 use futures::lock::Mutex;
 //use tokio::process::{Command};
-use netlink_packet_route::ErrorMessage;
-use netlink_packet_route::link::nlas::State;
+use netlink_packet_core::NetlinkMessage;
+use netlink_packet_core::ErrorMessage;
+use netlink_packet_route::link::State;
 use rtnetlink::{
     constants::{RTMGRP_IPV6_ROUTE, RTMGRP_IPV6_IFADDR, RTMGRP_LINK},
     Error,  Error::NetlinkError,  Handle,
     new_connection,
-    sys::{AsyncSocket, SocketAddr},
 };
-use netlink_packet_route::rtnl::{MACVLAN_MODE_BRIDGE, ARPHRD_PPP, ARPHRD_ETHER};
+use netlink_proto::sys::{AsyncSocket, SocketAddr};
+use netlink_packet_route::link::{MacVlanMode, LinkLayerType};
+use netlink_packet_core::{
+    NetlinkPayload::InnerMessage
+};
 use netlink_packet_route::{
-    NetlinkPayload::InnerMessage,
-    RtnlMessage::NewLink,
-    RtnlMessage::NewAddress,
-    RtnlMessage::NewRoute,
-    RtnlMessage::DelRoute,
-    RtnlMessage::DelAddress,
-    RtnlMessage::DelLink,
-    LinkMessage,
-    RtnlMessage,
-    NetlinkMessage
-    //    AddressMessage
-
+    RouteNetlinkMessage::NewLink,
+    RouteNetlinkMessage::NewAddress,
+    RouteNetlinkMessage::NewRoute,
+    RouteNetlinkMessage::DelRoute,
+    RouteNetlinkMessage::DelAddress,
+    RouteNetlinkMessage::DelLink,
+    link::LinkMessage,
+    //address::AddressMessage,
+    RouteNetlinkMessage
 };
 //use std::os::unix::net::UnixStream;
 //use sysctl::Sysctl;
 use crate::dull::IfIndex;
 
-pub type NetlinkMessageQueue = futures::channel::mpsc::UnboundedReceiver<(NetlinkMessage<RtnlMessage>, SocketAddr)>;
+pub type NetlinkMessageQueue = futures::channel::mpsc::UnboundedReceiver<(NetlinkMessage<RouteNetlinkMessage>, netlink_proto::sys::SocketAddr)>;
 
 #[async_trait]
 pub trait NetlinkManager: Send + Sync {
@@ -132,7 +134,7 @@ impl NetlinkInterface {
         self.handle
             .link()
             .set(childlink)
-            .master(parentlink)
+            .controller(parentlink)
             .execute()
             .await?;
         Ok(())
@@ -167,8 +169,16 @@ impl NetlinkManager for NetlinkInterface {
             .await;
 
         match result {
-            Err(NetlinkError(ErrorMessage { code: -17, .. })) => { println!("network pair already created"); return Ok(()) },
-            Err(NetlinkError(ErrorMessage { code: -19, .. })) => { println!("network pair already exists"); return Ok(()) },
+            Err(NetlinkError(ErrorMessage { code: Some(sillynumber), .. }))
+                if sillynumber == NonZeroI32::new(-17).unwrap() => {
+                    println!("network pair already created");
+                    return Ok(())
+                },
+            Err(NetlinkError(ErrorMessage { code: Some(code), .. }))
+                if code == NonZeroI32::new(-19).unwrap() => {
+                    println!("network pair already exists");
+                    return Ok(())
+                },
             Ok(_x) => { },
             _ => {
                 println!("new error: {:?}", result);
@@ -211,15 +221,28 @@ impl NetlinkManager for NetlinkInterface {
         let result = self.handle
             .link()
             .add()
-            .macvlan(dname.clone().into(), physif, MACVLAN_MODE_BRIDGE)
+            .macvlan(dname.clone().into(), physif, MacVlanMode::Bridge)
             .execute()
             .await;
 
         match result {
-            Err(NetlinkError(ErrorMessage { code: -16, .. })) => { println!("network macvlan conflicts with bridge"); return Ok(()) },
-            Err(NetlinkError(ErrorMessage { code: -17, .. })) => { println!("network macvlan already created"); return Ok(()) },
-            Err(NetlinkError(ErrorMessage { code: -19, .. })) => { println!("network macvlan not valid"); return Ok(()) },
-            Err(NetlinkError(ErrorMessage { code: -22, .. })) => { println!("network macvlan EINVAL"); return Ok(()) },
+            Err(NetlinkError(ErrorMessage { code: Some(code), .. })) => {
+                if code == NonZeroI32::new(-16).unwrap() {
+                    println!("network macvlan conflicts with bridge");
+                    return Ok(())
+                } else if code == NonZeroI32::new(-17).unwrap() {
+                    println!("network macvlan conflicts with bridge");
+                    return Ok(())
+                } else if code == NonZeroI32::new(-19).unwrap() {
+                    println!("network macvlan not valid");
+                    return Ok(())
+                } else if code == NonZeroI32::new(-22).unwrap() {
+                    println!("network macvlan EINVAL");
+                    return Ok(())
+                } else {
+                    println!("macvlan new error: {:?}", result);
+                }
+            }
             Ok(_x) => { },
             _ => {
                 println!("macvlan new error: {:?}", result);
@@ -398,9 +421,10 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
     si.link_debug(format!("processing ifindex: {:?} added={} type={:?}", ifindex, newlink, lm.header.link_layer_type));
 
     /* only proceed if the interface type is ethernet */
+    // other weird shit just probably will need specific code.
     match lm.header.link_layer_type {
-        ARPHRD_ETHER => {},
-        ARPHRD_PPP   => {},
+        LinkLayerType::Ether => {},
+        LinkLayerType::Ppp   => {},
         _ => { /* just finish */  return Ok(()); }
     }
 
@@ -414,21 +438,21 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
     //    return Ok(());
     //}
 
-    for nlas in &lm.nlas {
-        use netlink_packet_route::link::nlas::Nla;
+    for nlas in &lm.attributes {
+        use netlink_packet_route::link::LinkAttribute;
         match nlas {
-            Nla::IfName(name) => {
+            LinkAttribute::IfName(name) => {
                 si.link_debug(format!("  ifname: {}", name));
                 if name == "lo" {
                     ifn.ignored = true;
                 }
                 ifn.ifname = name.to_string();
             },
-            Nla::Mtu(bytes) => {
+            LinkAttribute::Mtu(bytes) => {
                 si.link_debug(format!("  mtu: {}", *bytes));
                 ifn.mtu = *bytes;
             },
-            Nla::OperState(state) => {
+            LinkAttribute::OperState(state) => {
                 match state {
                     State::Up => {
                         si.link_debug(format!("  device is up"));
@@ -437,13 +461,12 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                     _ => { si.link_debug(format!("  device in state {:?}", state)); }
                 }
             }
-            Nla::Info(listofstuff) => {
-                use netlink_packet_route::link::nlas::Info;
-                //use netlink_packet_route::link::nlas::InfoData;
-                use netlink_packet_route::link::nlas::InfoKind;
+            LinkAttribute::LinkInfo(listofstuff) => {
+                use netlink_packet_route::link::LinkInfo;
+                use netlink_packet_route::link::InfoKind;
                 for stuff in listofstuff {
                     match stuff {
-                        Info::Kind(kind) => {
+                        LinkInfo::Kind(kind) => {
                             si.link_debug(format!("  is it a bridge: {:?}", kind));
                             match kind {
                                 InfoKind::Bridge => {
@@ -463,17 +486,19 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                                 _ => { si.link_debug(format!("2 other kind {:?}", kind)); }
                             }
                         },
-                        Info::Data(_data) => { /* ignore bridge data */ }
-                        Info::SlaveData(_data) => { /* ignore bridge data */ }
-                        Info::SlaveKind(_data) => {
+                        LinkInfo::Data(_data) => { /* ignore bridge data */ }
+                        // LinkInfo::SlaveData(_data) => { /* ignore bridge data */ }
+                        /*
+                        LinkInfo::SlaveKind(_data) => {
                             /* what exactly to do with this data? */
                             ifn.bridge_slave = true;
-                        }
+                    }
+                         */
                         _ => { si.link_debug(format!("other info: {:?}", stuff)); }
                     }
                 }
             }
-            Nla::Link(ifmaster) | Nla::Master(ifmaster)     => {
+            LinkAttribute::Link(ifmaster) | LinkAttribute::Controller(ifmaster)     => {
                 if newlink {
                     /* could be a bridge, or could be a MACvlan */
                     ifn.ifmaster = Some(*ifmaster);
@@ -483,20 +508,23 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
                     ifn.ifmaster = None;
                 }
             }
-            Nla::Address(_listofaddr) => { /* something with addresses */ }
-            Nla::Carrier(_updown) => { /* something with the carrier */ }
+            LinkAttribute::Address(_listofaddr) => { /* something with addresses */ }
+            LinkAttribute::Carrier(_updown) => { /* something with the carrier */ }
 
-            Nla::Map(_) | Nla::AfSpecInet(_) | Nla::AfSpecBridge(_) |
-            Nla::ProtoDown(_) | Nla::ProtoInfo(_) |
-            Nla::Other(_) |
-            Nla::PermAddress(_) | Nla::MinMtu(_) | Nla::MaxMtu(_) |
-            Nla::Qdisc(_) | Nla::Mode(_) | Nla::Broadcast(_) |
-            Nla::CarrierChanges(_) | Nla::CarrierUpCount(_) | Nla::CarrierDownCount(_) |
-            Nla::Group(_) | Nla::Promiscuity(_) |
-            Nla::TxQueueLen(_) | Nla::NumTxQueues(_) | Nla::NumRxQueues(_) |
-            Nla::GsoMaxSegs(_) | Nla::GsoMaxSize(_) |
-            Nla::Event(_) |
-            Nla::Stats64(_) | Nla::Stats(_) | Nla::Xdp(_) => { /* nothing */ }
+            LinkAttribute::Map(_) |
+            // LinkAttribute::AfSpecInet(_) |
+            LinkAttribute::AfSpecBridge(_) |
+            LinkAttribute::ProtoDown(_) |
+            //LinkAttribute::ProtoInfo(_) |
+            LinkAttribute::Other(_) |
+            LinkAttribute::PermAddress(_) | LinkAttribute::MinMtu(_) | LinkAttribute::MaxMtu(_) |
+            LinkAttribute::Qdisc(_) | LinkAttribute::Mode(_) | LinkAttribute::Broadcast(_) |
+            LinkAttribute::CarrierChanges(_) | LinkAttribute::CarrierUpCount(_) | LinkAttribute::CarrierDownCount(_) |
+            LinkAttribute::Group(_) | LinkAttribute::Promiscuity(_) |
+            LinkAttribute::TxQueueLen(_) | LinkAttribute::NumTxQueues(_) | LinkAttribute::NumRxQueues(_) |
+            LinkAttribute::GsoMaxSegs(_) | LinkAttribute::GsoMaxSize(_) |
+            LinkAttribute::Event(_) |
+            LinkAttribute::Stats64(_) | LinkAttribute::Stats(_) | LinkAttribute::Xdp(_) => { /* nothing */ }
             _ => { si.link_debug(format!("index: {} system if nlas info: {:?}", ifindex, nlas)); }
         }
     }
@@ -587,9 +615,7 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>,
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use netlink_packet_route::LinkHeader;
-    use netlink_packet_route::link::nlas::Nla;
-    //use netlink_packet_route::constants::*;
+    use netlink_packet_route::link::{LinkAttribute,LinkHeader,LinkInfo};
 
     pub struct FakeNetlinkInterface {
     }
@@ -621,7 +647,8 @@ pub mod tests {
         }
     }
 
-    fn make_eth0() -> netlink_packet_route::LinkMessage {
+    fn make_eth0() -> LinkMessage {
+        use libc::ARPHRD_ETHER;
         LinkMessage {
             header: LinkHeader {
                 interface_family: 0,
@@ -631,13 +658,13 @@ pub mod tests {
                 change_mask: 0,
             },
             nlas: vec![
-                Nla::IfName("eth0".to_string()),
-                Nla::TxQueueLen(0),
+                LinkAttribute::IfName("eth0".to_string()),
+                LinkAttribute::TxQueueLen(0),
             ],
         }
     }
 
-    fn make_eth0_slave() -> netlink_packet_route::LinkMessage {
+    fn make_eth0_slave() -> LinkMessage {
         LinkMessage {
             header: LinkHeader {
                 interface_family: 0,
@@ -647,16 +674,15 @@ pub mod tests {
                 change_mask: 0,
             },
             nlas: vec![
-                Nla::IfName("eth0".to_string()),
-                Nla::TxQueueLen(0),
-                Nla::Master(2)
+                LinkAttribute::IfName("eth0".to_string()),
+                LinkAttribute::TxQueueLen(0),
+                LinkAttribute::Master(2)
             ],
         }
     }
 
-    fn make_trusted() -> netlink_packet_route::LinkMessage {
-        use netlink_packet_route::link::nlas::Info;
-        use netlink_packet_route::link::nlas::InfoKind;
+    fn make_trusted() -> netlink_packet_route::link::LinkMessage {
+        use netlink_packet_route::link::InfoKind;
 
         LinkMessage {
             header: LinkHeader {
@@ -667,18 +693,15 @@ pub mod tests {
                 change_mask: 0,
             },
             nlas: vec![
-                Nla::IfName("trusted".to_string()),
-                Nla::OperState(State::Up),
-                Nla::TxQueueLen(0),
-                Nla::Info(vec![Info::Kind(InfoKind::Bridge)]),
+                LinkAttribute::IfName("trusted".to_string()),
+                LinkAttribute::OperState(State::Up),
+                LinkAttribute::TxQueueLen(0),
+                LinkAttribute::Info(vec![LinkInfo::Kind(InfoKind::Bridge)]),
             ],
         }
     }
 
-    fn make_a_lone_if() -> netlink_packet_route::LinkMessage {
-        //use netlink_packet_route::link::nlas::Info;
-        //use netlink_packet_route::link::nlas::InfoKind;
-
+    fn make_a_lone_if() -> LinkMessage {
         LinkMessage {
             header: LinkHeader {
                 interface_family: 0,
@@ -688,10 +711,10 @@ pub mod tests {
                 change_mask: 0,
             },
             nlas: vec![
-                Nla::IfName("eth1".to_string()),
-                Nla::OperState(State::Up),
-                Nla::IfName("eth1".to_string()),
-                Nla::TxQueueLen(0),
+                LinkAttribute::IfName("eth1".to_string()),
+                LinkAttribute::OperState(State::Up),
+                LinkAttribute::IfName("eth1".to_string()),
+                LinkAttribute::TxQueueLen(0),
             ],
         }
     }
