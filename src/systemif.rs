@@ -72,12 +72,12 @@ pub trait NetlinkManager: Send + Sync {
                                   -> Result<(), rtnetlink::Error>;
 
     fn fetch_handle<'a>(self: &'a Self) -> Option<&'a Handle>;
-    fn fetch_messages<'a>(self: &'a mut Self) -> Option<&'a mut NetlinkMessageQueue>;
+    fn fetch_messages<'a>(self: &'a Self) -> Option<Arc<Mutex<NetlinkMessageQueue>>>;
 }
 
 pub struct NetlinkInterface {
     pub handle:     Handle,
-    pub messages:   NetlinkMessageQueue
+    pub messages:   Arc<Mutex<NetlinkMessageQueue>>
 }
 
 impl NetlinkInterface {
@@ -96,7 +96,7 @@ impl NetlinkInterface {
 
         rt.spawn(connection);
 
-        NetlinkInterface { handle: handle, messages: messages }
+        NetlinkInterface { handle: handle, messages: Arc::new(Mutex::new(messages)) }
     }
 
     pub async fn find_interface_ifindex(self: &NetlinkInterface,
@@ -147,8 +147,8 @@ impl NetlinkManager for NetlinkInterface {
     fn fetch_handle<'a>(self: &'a NetlinkInterface) -> Option<&'a Handle> {
         Some(&self.handle)
     }
-    fn fetch_messages<'a>(self: &'a mut NetlinkInterface) -> Option<&'a mut NetlinkMessageQueue> {
-        Some(&mut self.messages)
+    fn fetch_messages<'a>(self: &'a Self) -> Option<Arc<Mutex<NetlinkMessageQueue>>> {
+        Some(self.messages.clone())
     }
 
     async fn create_ethernet_pair_for_bridge(self: &Self,
@@ -577,7 +577,7 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>,
 
         println!("opening netlink socket for system interface monitor (debug={})", si.link_debugging);
 
-        let mut nl = NetlinkInterface::new(rt1);
+        let nl = NetlinkInterface::new(rt1);
 
         /* first scan and process existing interfaces */
         scan_interfaces(&mut si, &nl.handle).await;
@@ -586,7 +586,8 @@ pub async fn parent_processing(rt: &Arc<tokio::runtime::Runtime>,
         si.calculate_needed_dull(&nl, dull_pid).await.unwrap();
 
         /* then process anything new that arrives */
-        while let Some((message, _)) = nl.messages.next().await {
+        let mut msg1 = nl.messages.lock().await;
+        while let Some((message, _)) = msg1.next().await {
             let payload = &message.payload;
             match payload {
                 InnerMessage(NewLink(lm)) => {
@@ -625,7 +626,7 @@ pub mod tests {
             None
         }
 
-        fn fetch_messages<'a>(self: &'a mut Self) -> Option<&'a mut NetlinkMessageQueue> {
+        fn fetch_messages<'a>(self: &'a Self) -> Option<Arc<Mutex<NetlinkMessageQueue>>> {
             None
         }
 

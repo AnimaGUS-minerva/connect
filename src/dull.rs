@@ -279,19 +279,25 @@ impl DullData {
 
             let name = results.2;
 
-            let handle = self.handle.as_ref().unwrap();
-
-            // XXX replace here with new call to NetlinkManager
-            let result = handle
-                .link()
-                .set(results.1)
-                .up()
-                .execute()
-                .await;
-            match result {
-                Err(err) => { println!("bringing interface {}({}) up: {:?}", name, results.1, err); },
-                _ => {}
-            };
+            {
+                let lnm = self.netlink.lock().await;
+                println!("locked netlink for up call");
+                match lnm.fetch_handle() {
+                    None => { return (); },
+                    Some(handle) => {
+                        let result = handle
+                            .link()
+                            .set(results.1)
+                            .up()
+                            .execute()
+                            .await;
+                        match result {
+                            Err(err) => { println!("bringing interface {}({}) up: {:?}", name, results.1, err); },
+                            _ => {}
+                        };
+                    }
+                }
+            }
 
             /* the interface is now configured for not accept_ra, or accept_ra_dfl */
             if !mydebug.allow_router_advertisement {
@@ -492,19 +498,30 @@ async fn abutment_process_netlink(child: Arc<Mutex<DullData>>) -> ()
         dd.netlink.clone()
     };
 
-    let mut mnl = nl.lock().await;
-    match mnl.fetch_messages() {
-        None => { return (); },
-        Some(messages) => {
-            while let Some((message, _)) = messages.next().await {
-                let (debug,ikev2_started) = {
-                    let data = child.lock().await;
-                    (data.debug.clone(), data.ikev2_started)
-                };
-                abutment_process_one_netlink(child.clone(), debug, ikev2_started, message).await;
+    let msg1 = {
+        println!("processing netlink messages");
+        let mnl = nl.lock().await;
+        println!("netlink locked");
+        match mnl.fetch_messages() {
+            None => { return (); },
+            Some(messages) => {
+                messages.clone()
             }
         }
     };
+
+    println!("getting messages lock");
+    {
+        let mut lmsg1 = msg1.lock().await;
+        while let Some((message, _)) = lmsg1.next().await {
+            let (debug,ikev2_started) = {
+                let data = child.lock().await;
+                (data.debug.clone(), data.ikev2_started)
+            };
+            println!("process one netlink");
+            abutment_process_one_netlink(child.clone(), debug, ikev2_started, message).await;
+        };
+    }
     ()
 }
 
@@ -774,9 +791,9 @@ pub fn namespace_daemon() -> Result<DullInit, std::io::Error> {
                 .enable_all()
                 .build()
                 .unwrap();
-
             let rt = Arc::new(rt0);
             let art = rt.clone();
+
             let future1 = child_processing(rt.clone(), pair.1);
             art.handle().block_on(future1);
 
