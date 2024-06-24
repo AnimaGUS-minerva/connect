@@ -513,10 +513,10 @@ async fn gather_parent_link_info(si: &mut SystemInterfaces,
             LinkAttribute::Carrier(_updown) => { /* something with the carrier */ }
 
             LinkAttribute::Map(_) |
-            // LinkAttribute::AfSpecInet(_) |
+            LinkAttribute::AfSpecUnspec(_) |
             LinkAttribute::AfSpecBridge(_) |
             LinkAttribute::ProtoDown(_) |
-            //LinkAttribute::ProtoInfo(_) |
+            LinkAttribute::ProtoInfoBridge(_) |
             LinkAttribute::Other(_) |
             LinkAttribute::PermAddress(_) | LinkAttribute::MinMtu(_) | LinkAttribute::MaxMtu(_) |
             LinkAttribute::Qdisc(_) | LinkAttribute::Mode(_) | LinkAttribute::Broadcast(_) |
