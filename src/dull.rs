@@ -38,6 +38,7 @@ use crate::control::DebugOptions;
 use crate::control::ControlStream;
 use crate::control::{open_log, unset_cloexec};
 use crate::systemif::{NetlinkManager,NetlinkInterface};
+use crate::openswan::OpenswanWhackInterface;
 
 use crate::openswan;
 use nix::unistd::*;
@@ -499,9 +500,7 @@ async fn abutment_process_netlink(child: Arc<Mutex<DullData>>) -> ()
     };
 
     let msg1 = {
-        println!("processing netlink messages");
         let mnl = nl.lock().await;
-        println!("netlink locked");
         match mnl.fetch_messages() {
             None => { return (); },
             Some(messages) => {
@@ -510,7 +509,6 @@ async fn abutment_process_netlink(child: Arc<Mutex<DullData>>) -> ()
         }
     };
 
-    println!("getting messages lock");
     {
         let mut lmsg1 = msg1.lock().await;
         while let Some((message, _)) = lmsg1.next().await {
@@ -518,7 +516,6 @@ async fn abutment_process_netlink(child: Arc<Mutex<DullData>>) -> ()
                 let data = child.lock().await;
                 (data.debug.clone(), data.ikev2_started)
             };
-            println!("process one netlink");
             abutment_process_one_netlink(child.clone(), debug, ikev2_started, message).await;
         };
     }

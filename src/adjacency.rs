@@ -24,6 +24,7 @@ use std::fmt;
 use futures::stream::TryStreamExt;
 use futures::lock::{Mutex};
 use netlink_packet_sock_diag::constants::IPPROTO_UDP;
+use rtnetlink::RouteMessageBuilder;
 use tokio::time::{sleep, Duration};
 use tokio::process::Command;
 
@@ -36,7 +37,9 @@ use crate::openswan::OpenswanWhackInterface;
 pub struct Adjacency {
     pub interface:     Arc<Mutex<DullInterface>>,
     pub ifindex:       u32,
-    pub v6addr:        Ipv6Addr,                      // IPv6-LL of peer
+    pub v6addr:        Ipv6Addr,      // IPv6 (LL? ULA?) of peer
+    pub initiator:     Ipv6Addr,      // where did announcement come from?
+    pub route_installed: bool,        // if route to v6addr installed
     pub ikeport:       u16,
     pub advertisement_count:      u32,
     pub tunnelup:      bool,
@@ -58,6 +61,8 @@ impl Adjacency {
     pub fn empty(di: Arc<Mutex<DullInterface>>) -> Adjacency {
         Adjacency { interface: di.clone(),
                     v6addr:    Ipv6Addr::UNSPECIFIED,
+                    initiator: Ipv6Addr::UNSPECIFIED,
+                    route_installed: false,
                     ikeport:   0,
                     acp_number: None,
                     acp_iface:  "".to_string(),
@@ -88,6 +93,7 @@ impl Adjacency {
                                                           port_number } => {
                         let mut adj       = Self::empty(di);
                         adj.v6addr    = v6addr;
+                        adj.initiator = gm.initiator;
                         adj.ikeport   = port_number;
                         return Some(adj);
                     }
@@ -97,6 +103,48 @@ impl Adjacency {
         }
 
         return None;
+    }
+
+    pub async fn do_adjacency_route(self: &mut Adjacency) -> Result<(), rtnetlink::Error> {
+        if self.route_installed {
+            println!("route already installed: {} and {}%{}",
+                     self.initiator, self.v6addr, self.ifindex);
+            return Ok(());
+        }
+
+        if self.initiator == self.v6addr ||
+            (self.v6addr.segments()[0] & 0xfe00) != 0xfe00 {
+                // not a ULA announced
+                println!("not a ULA prefix: {} and {}%{}",
+                         self.initiator, self.v6addr, self.ifindex);
+                return Ok(());
+        }
+
+        /* okay, need to put the route in */
+        let ifn = self.interface.lock().await;
+        let lgd = match &ifn.grasp_daemon {
+            None => { return Ok(()); },
+            Some(gd) => { gd.lock().await }
+        };
+
+        let dd = lgd.dulldata.lock().await;
+
+        {
+            let ddl = dd.netlink.lock().await;
+            match &ddl.fetch_handle() {
+                None => { return Ok(()); },
+                Some(handle) => {
+                    let route = RouteMessageBuilder::<Ipv6Addr>::new()
+                        .destination_prefix(self.v6addr, 128)
+                        .gateway(self.initiator)
+                        .output_interface(self.ifindex)
+                        .build();
+                    handle.route().add(route).execute().await?;
+                }
+            }
+        };
+        self.route_installed = true;
+        Ok(())
     }
 
     pub async fn make_acp(self: &mut Adjacency) -> Result<(), rtnetlink::Error> {
@@ -179,6 +227,9 @@ impl Adjacency {
         } else {
             return Ok(());
         }
+
+        /* insert whatever route might be needed */
+        self.do_adjacency_route().await?;
 
         let myll6addr = {
             let ifn = self.interface.lock().await;
