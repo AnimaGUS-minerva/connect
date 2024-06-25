@@ -176,7 +176,14 @@ impl OpenswanWhackInterface {
         //   bind() for dull004/dull004 [fe80::609c:62ff:fed8:abba%92]:500
         //      in process_raw_ifaces(). Errno 99: Cannot assign requested address
         // and it is not clear why, except that maybe the interface is not yet up?
-        sleep(Duration::from_millis(100)).await;
+        // it seems to be worse now that the ULA address has also been added.
+        // maybe it needs to wait for DAD to settle?  YES.
+        // 57: dull014@if58: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+        // link/ether 02:4d:9c:90:82:bb brd ff:ff:ff:ff:ff:ff link-netnsid 0
+        // inet6 fdc2:ae5d:4f12:39:4d:9cff:fe90:82bb/128 scope global tentative
+        // valid_lft forever preferred_lft forever
+
+        sleep(Duration::from_millis(1500)).await;
         OpenswanWhackInterface::openswan_send_cmd(
             OpenswanWhackInterface::openswan_encode_linkandlisten()).await.unwrap();
 

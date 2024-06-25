@@ -262,11 +262,14 @@ impl GraspDaemon {
                             //if !adj.v6addr.is_unicast_link_local() {
                             // continue;
                             //}
-                            if adj.v6addr.segments()[0] != 0xfe80 {
+                            println!("v6addr segment[0]: {:#04x}",
+                                     adj.initiator.segments()[0]);
+
+                            if adj.initiator.segments()[0] != 0xfe80 {
                                 continue;
                             }
 
-                            if adj.v6addr == myll6addr {
+                            if adj.initiator == myll6addr {
                                 // self-announcment
                                 continue;
                             }
