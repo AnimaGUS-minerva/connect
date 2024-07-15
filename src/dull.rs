@@ -184,7 +184,7 @@ impl DullData {
     pub fn empty(rt: Arc<tokio::runtime::Runtime>,
                  nm: Arc<Mutex<dyn NetlinkManager>>) -> DullData {
         return DullData { interfaces:       HashMap::new(),
-                          ifid_number:      0,
+                          ifid_number:      1,
                           cmd_cnt:          0,
                           debug:            DebugOptions::empty(),
                           exit_now:         false,
