@@ -113,8 +113,8 @@ impl Adjacency {
         }
 
         if self.initiator == self.v6addr ||
-            (self.v6addr.segments()[0] & 0xfe00) != 0xfe00 {
-                // not a ULA announced
+            (self.v6addr.segments()[0] & 0xfc00) != 0xfc00 {
+                // not a ULA announced, ignore it.
                 println!("not a ULA prefix: {} and {}%{}",
                          self.initiator, self.v6addr, self.ifindex);
                 return Ok(());
