@@ -187,7 +187,7 @@ impl GraspDaemon {
                 (ifn.linklocal6,ifn.ifindex)
             };
 
-            if debug_graspdaemon {
+            if debug_graspdaemon && false {
                 println!("listening on GRASP socket {:?}", recv);
             }
             let results = recv.recv_from(&mut bufbytes).await;
@@ -200,7 +200,7 @@ impl GraspDaemon {
                         SocketAddr::V6(addr6) => {
                             let v6origin = addr6.ip();
                             if addr6.scope_id() != myifindex {
-                                if debug_graspdaemon {
+                                if debug_graspdaemon && false {
                                     println!("GD: ignoring message from different ifindex: {} vs {}",
                                              addr6.scope_id(), myifindex);
                                 }
@@ -213,7 +213,7 @@ impl GraspDaemon {
                             for (k,ldi) in &data.interfaces {
                                 let di = ldi.lock().await;
                                 if di.linklocal6 == *v6origin {
-                                    if debug_graspdaemon {
+                                    if debug_graspdaemon && false {
                                         println!("GD: ignoring announcement from self ({}: {})", k, addr);
                                     }
                                     continue;
@@ -244,12 +244,13 @@ impl GraspDaemon {
                         }
                     };
 
-                    if debug_graspdaemon {
+                    if debug_graspdaemon && false {
                         // now we have a graspmessage which we'll do something with!
                         println!("{} grasp message: {:?}", cnt, graspmessage);
                     }
 
                     let ladj = {
+                        //println!("getting GD lock to up adjacency");
                         let gdl = gd.lock().await;
                         let mut dil = gdl.dullif.lock().await;
 
@@ -262,8 +263,8 @@ impl GraspDaemon {
                             //if !adj.v6addr.is_unicast_link_local() {
                             // continue;
                             //}
-                            println!("v6addr segment[0]: {:#04x}",
-                                     adj.initiator.segments()[0]);
+
+                            //println!("v6addr segment[0]: {:#04x}", adj.initiator.segments()[0]);
 
                             if adj.initiator.segments()[0] != 0xfe80 {
                                 continue;
@@ -296,7 +297,7 @@ impl GraspDaemon {
                     let result = adj.up(auto_up_adj, disable_ikev2).await;
                     match result {
                         Err(stuff) => { println!("error: {:?}", stuff); }
-                        Ok(_) => { }
+                        Ok(_) => { /* println!("adj up"); */ }
                     }
                 }
                 Err(msg) => {

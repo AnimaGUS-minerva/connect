@@ -143,6 +143,7 @@ impl Adjacency {
             match &ddl.fetch_handle() {
                 None => { return Ok(()); },
                 Some(handle) => {
+                    println!("adding route to {:?}", self.v6addr);
                     let route = RouteMessageBuilder::<Ipv6Addr>::new()
                         .destination_prefix(self.v6addr, 128)
                         .gateway(self.initiator)
@@ -182,14 +183,19 @@ impl Adjacency {
 
         let mut acpresult = {
             let ddl = dd.netlink.lock().await;
+            println!("got netlink lock for handle");
             match &ddl.fetch_handle() {
                 None => { return Ok(()); },
                 Some(handle) => {
+                    println!("starting acptun create: {:?}", self.acp_number);
                     acptun::create(&handle, &self.acp_iface, ifn.ifindex, laddr, raddr, vn).await.unwrap();
+                    println!("acptun created");
                     handle.link().get().match_name(self.acp_iface.clone()).execute()
                 }
             }
         };
+        println!("end of netlink lock for handle");
+
         let acp_next  = acpresult.try_next().await;
         let acp_result = match acp_next {
             Err(repr) => { return Err(repr) },

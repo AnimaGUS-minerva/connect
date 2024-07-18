@@ -716,6 +716,7 @@ async fn ignore_sigint(dd: &Arc<Mutex<DullData>>) {
 async fn child_processing(rt: Arc<tokio::runtime::Runtime>,
                           sock: UnixStream) {
 
+    console_subscriber::init();
     let parent_stream = tokio::net::UnixStream::from_std(sock).unwrap();
     let mut cs = ControlStream::child(parent_stream);
     let nm = Arc::new(Mutex::new(NetlinkInterface::new(rt.clone())));
