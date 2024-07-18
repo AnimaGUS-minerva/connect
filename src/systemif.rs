@@ -389,7 +389,7 @@ impl SystemInterfaces {
                 continue;
             }
 
-            if !ifn.has_dull_if && !ifn.ignored {
+            if !ifn.has_dull_if && !ifn.ignored && !ifn.macvlan {
                 if ifn.bridge_master  {
                     ifn.log_if(*k);
                     println!("     creating new ethernet pair for {}", ifn.ifindex);
