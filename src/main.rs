@@ -15,6 +15,7 @@
  *
  */
 #![feature(ip_in_core)]
+#![feature(let_chains)]
 
 extern crate sysctl;
 
