@@ -286,10 +286,12 @@ impl Adjacency {
                 // lowest octet of the IPv6-LL.   This results in both
                 // sides deterministically agreeing on one side to initiate,
                 // but both sides will try.  100 + 0-255 * 3 ~ 1s delay.
-                let delay_time: u64 = 100 + (myll6addr.octets()[15] as u64) * 3;
+                let delay_time: u64 = 100 + (my6addr.octets()[15] as u64) * 3;
                 println!("waiting {}ms before activating {}", delay_time, policy_name);
                 sleep(Duration::from_millis(delay_time)).await;
 
+                // for luck with DAD, do another listen to make sure all addresses are known.
+                OpenswanWhackInterface::openswan_setup().await.unwrap();
                 OpenswanWhackInterface::up_adjacency(&policy_name).await.unwrap();
             } else {
                 println!("Auto-Up is set to false");
