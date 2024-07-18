@@ -40,6 +40,7 @@ pub struct Adjacency {
     pub v6addr:        Ipv6Addr,      // IPv6 (LL? ULA?) of peer
     pub initiator:     Ipv6Addr,      // where did announcement come from?
     pub route_installed: bool,        // if route to v6addr installed
+    pub ula_adjacency: bool,          // if adjacency is using IPv6 ULA rather than LL
     pub ikeport:       u16,
     pub advertisement_count:      u32,
     pub tunnelup:      bool,
@@ -63,6 +64,7 @@ impl Adjacency {
                     v6addr:    Ipv6Addr::UNSPECIFIED,
                     initiator: Ipv6Addr::UNSPECIFIED,
                     route_installed: false,
+                    ula_adjacency: false,
                     ikeport:   0,
                     acp_number: None,
                     acp_iface:  "".to_string(),
@@ -112,12 +114,19 @@ impl Adjacency {
             return Ok(());
         }
 
-        if self.initiator == self.v6addr ||
-            (self.v6addr.segments()[0] & 0xfc00) != 0xfc00 {
-                // not a ULA announced, ignore it.
-                println!("not a ULA prefix: {} and {}%{}",
-                         self.initiator, self.v6addr, self.ifindex);
-                return Ok(());
+        if self.initiator == self.v6addr {
+            println!("no route needed for IPv6-LL address");
+            return Ok(());
+        }
+
+        /* see if destination is ULA, if so, mark as ULA SA */
+        if (self.v6addr.segments()[0] & 0xfc00) != 0xfc00 {
+            // not a ULA announced, ignore it.
+            println!("not a ULA prefix: {} and {}%{}",
+                     self.initiator, self.v6addr, self.ifindex);
+            return Ok(());
+        } else {
+            self.ula_adjacency = true;
         }
 
         /* okay, need to put the route in */
@@ -231,10 +240,16 @@ impl Adjacency {
         /* insert whatever route might be needed */
         self.do_adjacency_route().await?;
 
-        let myll6addr = {
+        let my6addr = {
             let ifn = self.interface.lock().await;
-            ifn.linklocal6
+            if let Some(ula) = ifn.ula6 && self.ula_adjacency {
+                ula
+            } else {
+                ifn.linklocal6
+            }
         };
+
+
 
         let ifid     = self.acp_number.unwrap();
         let ifid_str = format!("{}", ifid);
@@ -248,7 +263,7 @@ impl Adjacency {
             let _command = Command::new("/root/tunnel")
                 .arg(self.acp_iface.to_string())
                 .arg(ifid_str)
-                .arg(myll6addr.to_string())
+                .arg(my6addr.to_string())
                 .arg(self.v6addr.to_string())
                 .spawn().unwrap();
         } else {
@@ -256,14 +271,14 @@ impl Adjacency {
             OpenswanWhackInterface::add_adjacency(&self.acp_iface,
                                                   ifid as u32,
                                                   &policy_name,
-                                                  myll6addr,
+                                                  my6addr,
                                                   self.v6addr).await.unwrap();
             self.openswan_loaded = true;
             if auto_up {
-                let myll6addr_str = format!("{}", myll6addr);
+                let my6addr_str = format!("{}", my6addr);
                 let _adjacencycmd = Command::new("/root/newadj")
                                                  .arg(ifid_str)
-                                                 .arg(myll6addr_str)
+                                                 .arg(my6addr_str)
                                                  .arg(self.v6addr.to_string())
                                                  .spawn().unwrap();
 
