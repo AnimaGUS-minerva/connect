@@ -450,6 +450,7 @@ async fn abutment_process_one_netlink(child: Arc<Mutex<DullData>>,
                 gather_link_info(&child, stuff).await.unwrap();
             }
             InnerMessage(NewAddress(stuff)) => {
+                // note that new addresses might still be calculating Duplicate Address Detection.
                 let sifn = gather_addr_info(&child, stuff).await.unwrap();
 
                 if let Some(lifn) = sifn {
