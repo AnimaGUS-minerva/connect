@@ -247,6 +247,7 @@ impl DullData {
                             }
                         };
                     },
+                    LinkAttribute::TxQueueLen(_) => { /* nothing */ },
                     /*
                     AfSpecInet::DevConf(inets) => {
                         for ip in inets {
@@ -370,7 +371,7 @@ impl DullData {
                 //LinkAttribute::CacheInfo(_info) => { /* nothing */},
                 //LinkAttribute::Flags(_info)     => { /* nothing */},
                 _ => {
-                    mydebug.debug_info(format!("data: {:?} ", nlas));
+                    mydebug.debug_info(format!("link data: {:?} ", nlas));
                 }
             }
         }
