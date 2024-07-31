@@ -226,19 +226,21 @@ impl OpenswanWhackInterface {
     }
 
     pub fn pair_name(myllv6:    Ipv6Addr,
-                     eyllv6:    Ipv6Addr) -> String {
+                     eyllv6:    Ipv6Addr) -> (String, bool) {
         let mut octets_ey = eyllv6.octets();
         let mut octets_me = myllv6.octets();
+        let mut i_initiate = false;
         if octets_ey[15] > octets_me[15] {
             // swap them so that both ends come up with the same name.
             let tmp = octets_me;
             octets_me = octets_ey;
             octets_ey = tmp;
+            i_initiate = true;
         }
         let pair_name = format!("{:02x}{:02x}_{:02x}{:02x}",
                                 octets_me[14], octets_me[15],
                                 octets_ey[14], octets_ey[15]);
-        return pair_name;
+        return (pair_name, i_initiate);
     }
 
     pub fn encode_ll_policy(myllv6:    Ipv6Addr,
