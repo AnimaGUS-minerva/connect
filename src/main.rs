@@ -78,8 +78,8 @@ async fn exit_child(stream: &mut control::ControlStream) {
 // Hermes Connect Autonomic Control Plane (ACP) manager
 struct ConnectOptions {
     // turn on debugging from Grasp DULL
-    #[structopt(default_value = "false", long, parse(try_from_str))]
-    debug_graspdaemon: bool,
+    #[structopt(default_value = "0", long, parse(try_from_str))]
+    debug_graspdaemon: u8,
 
     // turn on debugging from Netlink
     #[structopt(default_value = "false", long, parse(try_from_str))]
