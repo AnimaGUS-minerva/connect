@@ -281,6 +281,18 @@ impl Adjacency {
                                                   &policy_name,
                                                   my6addr,
                                                   self.v6addr).await.unwrap();
+
+            // now up the interface after a delay inspired by the
+            // lowest octet of the IPv6-LL.   This results in both
+            // sides deterministically agreeing on one side to initiate first,
+            // but both sides eventually sides.  100 + 0-255 * 3 ~ 1s delay.
+            let delay_time: u64 = 100 + (my6addr.octets()[15] as u64) * 3;
+            println!("waiting {}ms before activating {}", delay_time, policy_name);
+            sleep(Duration::from_millis(delay_time)).await;
+
+            // so for luck with DAD, do another listen to make sure all addresses are known.
+            OpenswanWhackInterface::openswan_setup().await.unwrap() ;
+
             self.openswan_loaded = true;
             if auto_up {
                 let my6addr_str = format!("{}", my6addr);
@@ -290,21 +302,9 @@ impl Adjacency {
                                                  .arg(self.v6addr.to_string())
                                                  .spawn().unwrap();
 
-                if false {
-                    // now up the interface after a delay inspired by the
-                    // lowest octet of the IPv6-LL.   This results in both
-                    // sides deterministically agreeing on one side to initiate first,
-                    // but both sides will try.  100 + 0-255 * 3 ~ 1s delay.
-                    let delay_time: u64 = 100 + (my6addr.octets()[15] as u64) * 3;
-                    println!("waiting {}ms before activating {}", delay_time, policy_name);
-                    sleep(Duration::from_millis(delay_time)).await;
-                } else {
-                    if self.i_initiate {
-                        // for luck with DAD, do another listen to make sure all addresses are known.
-                        OpenswanWhackInterface::openswan_setup().await.unwrap();
-                        println!("initiating for {}", self.pair_name);
-                        OpenswanWhackInterface::up_adjacency(&policy_name).await.unwrap();
-                    }
+                if self.i_initiate {
+                    println!("initiating for {}", self.pair_name);
+                    OpenswanWhackInterface::up_adjacency(&policy_name).await.unwrap();
                 }
             } else {
                 println!("Auto-Up is set to false");
