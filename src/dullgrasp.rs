@@ -71,7 +71,9 @@ async fn setup_ula_for_interface(ifn: &mut DullInterface,
         println!("ULA is using: {}", ula6);
 
         let ddl = dd.netlink.lock().await;
-        ddl.add_abutment_address(ifn.ifindex, ula6).await.unwrap();
+        //ddl.add_abutment_address(ifn.ifindex, ula6).await.unwrap();
+        // put abutment address on loopback, which is assumed to be ifindex 1
+        ddl.add_abutment_address(1, ula6).await.unwrap();
         ifn.ula6 = Some(ula6);
     }
 
