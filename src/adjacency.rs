@@ -183,20 +183,18 @@ impl Adjacency {
 
         println!("calling acp_tun with {} pair={}", self.acp_iface, self.pair_name);
 
+        // returns the ifindex of the newly created acptun
         let mut acpresult = {
             let ddl = dd.netlink.lock().await;
-            println!("got netlink lock for handle");
             match &ddl.fetch_handle() {
                 None => { return Ok(()); },
                 Some(handle) => {
-                    println!("starting acptun create: {:?}", self.acp_number);
+                    println!("starting acptun create: {} with if_id={}", self.acp_iface, vn);
                     acptun::create(&handle, &self.acp_iface, ifn.ifindex, laddr, raddr, vn).await.unwrap();
-                    println!("acptun created");
                     handle.link().get().match_name(self.acp_iface.clone()).execute()
                 }
             }
         };
-        println!("end of netlink lock for handle");
 
         let acp_next  = acpresult.try_next().await;
         let acp_result = match acp_next {
