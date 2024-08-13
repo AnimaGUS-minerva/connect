@@ -524,6 +524,15 @@ async fn child_processing(childinfo: Arc<Mutex<AcpChild>>, sock: UnixStream) {
 
     ignore_sigint(&childinfo).await;
 
+    // turn on IPv6 forwarding within this namespace
+    {
+        let forw6 = format!("net.ipv6.conf.all.forwarding");
+        let ctl = sysctl::Ctl::new(&forw6).expect(&format!("could not create sysctl '{}'", forw6));
+        let _ovalue = ctl.set_value_string("1").unwrap_or_else(|e| {
+            panic!("Could not set disable v6 forwarding value. Error: {:?}", e);
+        });
+    }
+
     /* arrange to listen on network events in the new network namespace */
     let netlink_handle = listen_network(&childinfo).await.unwrap();
 
@@ -531,7 +540,6 @@ async fn child_processing(childinfo: Arc<Mutex<AcpChild>>, sock: UnixStream) {
         let mut cil = childinfo.lock().await;
         cil.netlink_handle = Some(netlink_handle);
     }
-
     /* let parent know that we ready */
     println!("acp tell parent, child is ready");
     cs.write_child_ready().await.unwrap();
