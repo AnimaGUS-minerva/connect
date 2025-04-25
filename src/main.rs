@@ -151,7 +151,9 @@ async fn set_number_with_ula(abutment: &mut dull::Dull, prefix: Ipv6Addr) {
 fn read_abutment_ula() -> Option<Ipv6Addr> {
 
     let ulafilename = Path::new(ETCCONNECT).join("ula.txt");
-    let v6maybe = fs::read_to_string(ulafilename).ok()?.parse();
+    let v6string = fs::read_to_string(ulafilename).ok()?;
+    println!("Read {} from ula.txt", v6string);
+    let v6maybe = v6string.parse::<Ipv6Addr>();
     return match v6maybe {
         Ok(x) => Some(x),
         Err(_x) => None
