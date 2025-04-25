@@ -188,7 +188,10 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
 
     // tell the Abutment if it should number interfaces with ULAs.
     if let Some(x) = dull.abutment_ula {
+        println!("Abutment interfaces will be numbered with ULA: {}", x);
         set_number_with_ula(&mut dull, x).await;
+    } else {
+        println!("Abutment interfaces will not be numbered with ULA");
     }
 
     // wait for hello from ACP and then Abutment namespace
