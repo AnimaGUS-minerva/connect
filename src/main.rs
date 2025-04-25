@@ -14,7 +14,6 @@
    limitations under the License.
  *
  */
-#![feature(ip_in_core)]
 #![feature(let_chains)]
 
 extern crate sysctl;
@@ -78,8 +77,8 @@ async fn exit_child(stream: &mut control::ControlStream) {
 // Hermes Connect Autonomic Control Plane (ACP) manager
 struct ConnectOptions {
     // turn on debugging from Grasp DULL
-    #[structopt(default_value = "false", long, parse(try_from_str))]
-    debug_graspdaemon: bool,
+    #[structopt(default_value = "0", long, parse(try_from_str))]
+    debug_graspdaemon: u8,
 
     // turn on debugging from Netlink
     #[structopt(default_value = "false", long, parse(try_from_str))]
@@ -189,7 +188,10 @@ async fn parents(rt: Arc<tokio::runtime::Runtime>,
 
     // tell the Abutment if it should number interfaces with ULAs.
     if let Some(x) = dull.abutment_ula {
+        println!("Abutment interfaces will be numbered with ULA: {}", x);
         set_number_with_ula(&mut dull, x).await;
+    } else {
+        println!("Abutment interfaces will not be numbered with ULA");
     }
 
     // wait for hello from ACP and then Abutment namespace

@@ -41,14 +41,14 @@ use crate::dull::Dull;
 pub struct DebugOptions {
     pub allow_router_advertisement: bool,
     pub debug_namespaces:  bool,
-    pub debug_graspdaemon: bool
+    pub debug_graspdaemon: u8,
 }
 impl DebugOptions {
     pub fn empty() -> DebugOptions {
         DebugOptions {
             allow_router_advertisement: false,
             debug_namespaces:  false,
-            debug_graspdaemon: false
+            debug_graspdaemon: 0,
         }
     }
 
@@ -64,7 +64,7 @@ impl DebugOptions {
 pub enum DullControl {
     Exit,
     AdminDown { interface_index: u32 },
-    GraspDebug { grasp_debug: bool },
+    GraspDebug { grasp_debug: u8 },
     AutoAdjacency { adj_up: bool },
     DisableIKEv2  { disable_ikev2: bool },
     DullNamespace { namespace_id: i32 },

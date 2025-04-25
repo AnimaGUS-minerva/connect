@@ -71,7 +71,9 @@ async fn setup_ula_for_interface(ifn: &mut DullInterface,
         println!("ULA is using: {}", ula6);
 
         let ddl = dd.netlink.lock().await;
-        ddl.add_abutment_address(ifn.ifindex, ula6).await.unwrap();
+        //ddl.add_abutment_address(ifn.ifindex, ula6).await.unwrap();
+        // put abutment address on loopback, which is assumed to be ifindex 1
+        ddl.add_abutment_address(1, ula6).await.unwrap();
         ifn.ula6 = Some(ula6);
     }
 
@@ -187,7 +189,7 @@ impl GraspDaemon {
                 (ifn.linklocal6,ifn.ifindex)
             };
 
-            if debug_graspdaemon && false {
+            if debug_graspdaemon > 1 {
                 println!("listening on GRASP socket {:?}", recv);
             }
             let results = recv.recv_from(&mut bufbytes).await;
@@ -200,7 +202,7 @@ impl GraspDaemon {
                         SocketAddr::V6(addr6) => {
                             let v6origin = addr6.ip();
                             if addr6.scope_id() != myifindex {
-                                if debug_graspdaemon && false {
+                                if debug_graspdaemon > 1 {
                                     println!("GD: ignoring message from different ifindex: {} vs {}",
                                              addr6.scope_id(), myifindex);
                                 }
@@ -213,7 +215,7 @@ impl GraspDaemon {
                             for (k,ldi) in &data.interfaces {
                                 let di = ldi.lock().await;
                                 if di.linklocal6 == *v6origin {
-                                    if debug_graspdaemon && false {
+                                    if debug_graspdaemon > 1 {
                                         println!("GD: ignoring announcement from self ({}: {})", k, addr);
                                     }
                                     continue;
@@ -225,7 +227,7 @@ impl GraspDaemon {
                         }
                     }
 
-                    if debug_graspdaemon {
+                    if debug_graspdaemon > 1 {
                         println!("{}: grasp daemon read: {} bytes from {}", cnt, size, addr);
                     }
                     let graspmessage = match cbor_decode(&bufbytes) {
@@ -244,7 +246,7 @@ impl GraspDaemon {
                         }
                     };
 
-                    if debug_graspdaemon && false {
+                    if debug_graspdaemon > 1 {
                         // now we have a graspmessage which we'll do something with!
                         println!("{} grasp message: {:?}", cnt, graspmessage);
                     }
