@@ -38,7 +38,7 @@ use crate::control::DebugOptions;
 use crate::control::ControlStream;
 use crate::control::{open_log, unset_cloexec};
 use crate::systemif::{NetlinkManager,NetlinkInterface};
-use crate::openswan::OpenswanWhackInterface;
+//use crate::openswan::OpenswanWhackInterface;
 
 use crate::openswan;
 use nix::unistd::*;
