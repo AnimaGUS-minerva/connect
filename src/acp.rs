@@ -537,7 +537,7 @@ async fn child_processing(childinfo: Arc<Mutex<AcpChild>>, sock: UnixStream) {
     cs.write_child_ready().await.unwrap();
 
     // start up RFC6550/RPL daemon, Unstrung
-    Command::new("/home/mcr/u")
+    Command::new("./u")
         .stdin(Stdio::null())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
