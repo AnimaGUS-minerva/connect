@@ -152,8 +152,9 @@ fn read_abutment_ula() -> Option<Ipv6Addr> {
 
     let ulafilename = Path::new(ETCCONNECT).join("ula.txt");
     let v6string = fs::read_to_string(ulafilename).ok()?;
-    println!("Read {} from ula.txt", v6string);
-    let v6maybe = v6string.parse::<Ipv6Addr>();
+    let v6addr   = v6string.trim();
+    println!("Read {} from ula.txt", v6addr);
+    let v6maybe = v6addr.parse::<Ipv6Addr>();
     return match v6maybe {
         Ok(x) => Some(x),
         Err(_x) => None
