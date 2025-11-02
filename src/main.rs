@@ -14,7 +14,6 @@
    limitations under the License.
  *
  */
-#![feature(let_chains)]
 
 extern crate sysctl;
 

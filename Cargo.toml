@@ -1,6 +1,6 @@
 [package]
 name = "connect"
-edition = "2018"
+edition = "2024"
 version = "1.0.0"
 authors = ["Michael Richardson <mcr@sandelman.ca>"]
 # build = "build.rs"

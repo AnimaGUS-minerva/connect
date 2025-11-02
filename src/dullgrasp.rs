@@ -333,7 +333,7 @@ impl GraspDaemon {
         };
 
         let mut rng = rand::thread_rng();
-        let sesid = rng.gen::<u32>();
+        let sesid = rng.r#gen::<u32>();
 
         let ike_locator = grasp::GraspLocator::O_IPv6_LOCATOR { v6addr: myv6,
                                                          transport_proto: IPPROTO_UDP,
